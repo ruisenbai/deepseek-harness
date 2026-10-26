@@ -17,6 +17,7 @@ Build Desktop installers locally or through Windows or macOS Actions, choose dep
 - [Configuration and local builds](#configuration-and-local-builds)
 - [Windows Actions packaging](#windows-actions)
 - [macOS self-hosted packaging](#macos-actions)
+- [Linux local build and installation](#linux-local-installation)
 - [Unsigned Windows test installer](#unsigned-windows-test-installer)
 - [Local macOS DMG without release signing](#local-macos-dmg-without-release-signing)
 - [macOS release signing and diagnostics](#macos-release-signing)
@@ -97,7 +98,7 @@ pnpm run package:desktop:mac:x64
 pnpm run package:desktop:win:x64
 ```
 
-The macOS arm64 command requires Apple Silicon. The macOS x64 command runs on Intel macOS or Apple Silicon with Rosetta. The Windows x64 command requires Windows x64. Linux is not a supported Desktop release target.
+The macOS arm64 command requires Apple Silicon. The macOS x64 command runs on Intel macOS or Apple Silicon with Rosetta. The Windows x64 command requires Windows x64. Linux x64 supports local unsigned builds and user installation through the [Linux workflow](#linux-local-installation); it has no hosted release or automatic-update feed.
 
 Both release and local unsigned macOS DMGs use LZMA compression (`dmg.format: 'ULMO'`) in [the electron-builder configuration](../scripts/electron-builder-config.mjs). A [build-time patch](../../../patches/app-builder-lib@26.17.0.patch) adds this format to the pinned builder's validation and TypeScript declarations.
 
@@ -145,6 +146,23 @@ bash apps/desktop/scripts/macos-runner-service.sh status "$HOME/dsh-ci/runner"
 ```
 
 The installer copies its startup script into `runner/dsh-service`, sets the service PATH to Node 24 plus system tools, and uses GitHub's `svc.sh` and `runsvc.sh`. The LaunchAgent survives SSH disconnection, but requires that account's desktop login after reboot and stops on desktop logout. FileVault disk unlock remains an operator step; this does not provide unattended boot. Logs are `runner/dsh-service/stdout.log` and `stderr.log`; verify `Connected to GitHub` and `Listening for Jobs`. To update installed startup code or tool paths, wait until the runner is idle, run `stop`, then `uninstall`, and repeat installation. Neither action unregisters the runner or removes packaging credentials. Uninstall retains `runner/dsh-service` (including logs) and the explicit `.path`; reinstall replaces the startup snapshot and PATH.
+
+<a id="linux-local-installation"></a>
+
+## Linux local build and installation
+
+On Linux x64, install a C++ compiler, make, Python, pkg-config and libvips development files, then install the locked workspace dependencies. System libvips must satisfy the selected sharp release (at least 8.18.7 for sharp 0.35.5) and remain installed when running the application. Packaging rebuilds sharp against that library because Linux Electron conflicts with the prebuilt libvips GLib symbols. It downloads the locked Electron and scripting runtimes and checks the assembled runtime without an online model. No release dotenv, signing credentials or update service is required. Run from the repository root:
+
+```sh
+pnpm run package:desktop:linux:x64
+pnpm run install:desktop:linux
+```
+
+The AppImage and `linux-unpacked` application are written to `apps/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts/`. For directory output only, use `pnpm run package:desktop:linux:x64:dir`. The current manifest version is used; `--build-version` accepts an explicit version, while automatic release numbering is unavailable for this local target.
+
+Installation copies `linux-unpacked` below `~/.local/opt/deepseek-harness/build-<id>/` and publishes `~/.local/share/applications/com.deepseek.harness.desktop`. Open DeepSeek Harness from the desktop application launcher. The installed directory runs independently of the checkout and needs no AppImage FUSE mount. See [window and tray behavior](../README.md#closing-the-window-and-quitting) for closing, reopening, restarting, and quitting. Build logs are under `apps/desktop/.desktop-build/packaging-runs/`.
+
+Run the same build and install commands to update. Each installation publishes its desktop entry only after copying finishes; earlier application copies remain available to running processes. After closing all instances, remove unused `build-<id>` directories to reclaim space. To uninstall, remove the desktop entry and `~/.local/opt/deepseek-harness/`; shared Harness user data is retained.
 
 <a id="unsigned-windows-test-installer"></a>
 
@@ -247,7 +265,7 @@ Desktop packs workspace packages locally and installs external dependencies thro
 
 The [Electron shell file list](../scripts/electron-builder-config.mjs) excludes recognized JavaScript/CSS/TypeScript source maps and TypeScript build caches from the separate `resources/app.asar/node_modules` dependency collection. These exclusions preserve runtime code, native modules, WASM, data files (including ordinary `.map` assets), licenses, and notices; [shell archive tests](../tests/shell-file-selection.spec.ts) check retained bytes and exclusions.
 
-The [Office conversion provider](../../../packages/document/office-to-pdf/README.md) carries the target’s declared native engine, or WASM when the kit declares no matching native target. Preparation rejects a missing target engine before packaging. The complete Office dependencies, including CLI, JavaScript libraries, and the selected engine’s executables, data, licenses, and notices, are unpacked under `resources/app.asar.unpacked/dsh/node_modules/`. The Desktop Host resolves engine manifests to these physical directories and supplies loaded skills with absolute standalone Node and unpacked CLI paths. Node lives in `resources/runtime/primary-runtime/dependencies/node/bin/`; the CLI is the unpacked `@deepseek-ai/libreoffice-kit/lib/cli.js`. On macOS, the native helper receives the JIT entitlement required by [LibreOffice’s UNO bridge](https://github.com/LibreOffice/core/blob/master/sysui/desktop/macosx/hardened_runtime.xcent.in).
+The [Office conversion provider](../../../packages/document/office-to-pdf/README.md) carries the target’s declared native engine, or WASM when the kit declares no matching native target. Preparation rejects a missing target engine before packaging. The complete Office dependencies, including CLI, JavaScript libraries, and the selected engine’s executables, data, licenses, and notices, are unpacked under `resources/app.asar.unpacked/dsh/node_modules/`. The Desktop Host loads the Office entry module and native or WASM engine from these physical directories, keeping optional-package discovery on the ordinary filesystem. It supplies loaded skills with absolute standalone Node and unpacked CLI paths. Node lives in `resources/runtime/primary-runtime/dependencies/node/bin/`; the CLI is the unpacked `@deepseek-ai/libreoffice-kit/lib/cli.js`. On macOS, the native helper receives the JIT entitlement required by [LibreOffice’s UNO bridge](https://github.com/LibreOffice/core/blob/master/sysui/desktop/macosx/hardened_runtime.xcent.in).
 
 The packaged application runs compiled JavaScript and pre-generated Typert metadata; it does not compile TypeScript plugins. Source-level debugger navigation and editor declarations remain available in development packages. [Copy-policy tests](../tests/runtime-file-policy.spec.ts) cover exclusions and retained assets; The [payload smoke](../tests/fixtures/runtime-payload-smoke.mjs) runs under Electron RunAsNode before the Host smoke and final inventory verification. The payload smoke resolves the search tool’s ripgrep executable and verifies text search and file enumeration. Signed Windows builds run these checks after dependency signing; other builds run them during `prepare:dsh`. The [Host smoke](../scripts/smoke-runtime.ts) creates DOCX, XLSX, and PPTX inputs with bundled Python, converts each through the real Office provider, and checks PDF output. Every assembled application, including directory and unsigned builds, repeats the payload and Host checks against ASAR. Archive integrity checks compare the complete archived descriptor with preparation, file bytes and membership in both archive and unpacked trees, recorded executable flags for archived files, and physical permissions for unpacked files. The Host smoke also obtains CLI paths from the loaded skill and runs capabilities and DOCX conversion with an empty PATH. Conversion failures stop packaging before a release record is written; macOS DMG/ZIP builds run these checks before notarization.
 

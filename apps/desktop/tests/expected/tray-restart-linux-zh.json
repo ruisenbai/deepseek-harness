@@ -1,0 +1,13 @@
+{
+  "type": "warning",
+  "title": "DeepSeek Harness",
+  "message": "重启 DeepSeek Harness？",
+  "detail": "当前正在运行的任务将会中断，且应用关闭期间，定时任务不会运行",
+  "buttons": [
+    "重启",
+    "取消"
+  ],
+  "defaultId": 0,
+  "cancelId": 1,
+  "noLink": true
+}

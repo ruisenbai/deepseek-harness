@@ -43,17 +43,18 @@ export class DesktopQuitConfirmation {
   constructor(private readonly options: DesktopQuitConfirmationOptions) {}
 
   /**
-   * Decide whether the quit may proceed. The inspection runs once per decision; work that starts or ends
+   * Decide whether the quit or restart may proceed. The inspection runs once per decision; work that starts or ends
    * while the confirmation is open does not change its copy, and approval never re-inspects.
-   * @returns true to quit now, false when the user cancelled.
+   * @param action - The first request's action; concurrent requests join that decision.
+   * @returns true to stop now, false when the user cancelled.
    */
-  confirm(): Promise<boolean> {
+  confirm(action: 'quit' | 'restart' = 'quit'): Promise<boolean> {
     if (this.disposed) return Promise.resolve(false)
     if (this.pending !== undefined) {
       this.options.focus()
       return this.pending
     }
-    const pending = this.decide().finally(() => { if (this.pending === pending) this.pending = undefined })
+    const pending = this.decide(action).finally(() => { if (this.pending === pending) this.pending = undefined })
     this.pending = pending
     return pending
   }
@@ -65,7 +66,7 @@ export class DesktopQuitConfirmation {
    */
   dispose(): void { this.disposed = true }
 
-  private async decide(): Promise<boolean> {
+  private async decide(action: 'quit' | 'restart'): Promise<boolean> {
     const inspection = this.options.inspect()
     if (inspection === undefined) return true
     const prompt = resolveDesktopQuitPrompt(await inspection.catch((error: unknown) => {
@@ -82,9 +83,9 @@ export class DesktopQuitConfirmation {
       type: windows ? 'none' : 'warning',
       ...(windows && this.options.icon !== undefined ? { icon: this.options.icon } : {}),
       title: messages.aboutProduct,
-      message: messages.quitTitle,
+      message: action === 'restart' ? messages.restartTitle : messages.quitTitle,
       detail: messages[prompt],
-      buttons: [messages.quit, messages.cancel],
+      buttons: [action === 'restart' ? messages.restartApplication : messages.quit, messages.cancel],
       defaultId: 0,
       cancelId: 1,
       noLink: true,

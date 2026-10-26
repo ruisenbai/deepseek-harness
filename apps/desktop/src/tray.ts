@@ -1,15 +1,19 @@
-/** Windows system tray: the always-present way back to a hidden window and the explicit quit entry. */
+/** Windows and Linux system tray: window activation and explicit application actions. */
 
 import { Menu, nativeImage, Tray } from 'electron'
 import type { DesktopLocale } from './locale.ts'
 
-/** Main-process actions the tray triggers; both run the same paths as the window and application menu. */
+/** Main-process actions exposed through the tray. */
 export interface DesktopTrayOptions {
-  /** Multi-size ICO rendered by `scripts/render-tray-icon.ts`; Windows picks the bitmap for the display scale. */
+  /** Multi-size ICO on Windows, application PNG on Linux. */
   readonly iconPath: string
   readonly locale: () => DesktopLocale
+  /** Handle primary activation: show on Windows, toggle restore/minimize on Linux. */
+  readonly activate: () => void
   /** Show and focus the primary window. */
   readonly open: () => void
+  /** Request a confirmed application restart when the platform exposes it. */
+  readonly restart?: () => void
   /** Request quit through the same confirmation as every other quit entry. */
   readonly quit: () => void
 }
@@ -18,12 +22,13 @@ export interface DesktopTrayOptions {
 export class DesktopTray {
   private tray: Tray | undefined
 
-  /** @param options - Icon path, locale reader, and the open and quit actions. */
+  /** @param options - Icon path, locale reader, and window and application actions. */
   constructor(private readonly options: DesktopTrayOptions) {
     const tray = new Tray(nativeImage.createFromPath(options.iconPath))
     this.tray = tray
-    tray.on('click', () => { options.open() })
-    this.relabel()
+    tray.on('click', () => { options.activate() })
+    try { this.relabel() }
+    catch (error) { this.dispose(); throw error }
   }
 
   /** Rebuild the tooltip and context menu in the current locale. */
@@ -34,6 +39,9 @@ export class DesktopTray {
     tray.setToolTip(messages.aboutProduct)
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: messages.openApplication, click: () => { this.options.open() } },
+      ...this.options.restart === undefined ? [] : [
+        { label: messages.restartApplication, click: () => { this.options.restart?.() } },
+      ],
       { type: 'separator' },
       { label: messages.quitApplication, click: () => { this.options.quit() } },
     ]))

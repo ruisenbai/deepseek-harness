@@ -27,12 +27,16 @@ vi.mock('electron', () => ({
 
 afterEach(() => { native.trays.length = 0; native.menus.length = 0; vi.clearAllMocks() })
 
-function setup(locale = 'en') {
+function setup(locale = 'en', withRestart = false) {
   let current = resolveDesktopLocale(locale)
+  const activate = vi.fn()
   const open = vi.fn()
+  const restart = vi.fn()
   const quit = vi.fn()
-  const tray = new DesktopTray({ iconPath: 'C:/app/resources/tray.ico', locale: () => current, open, quit })
-  return { tray, open, quit, native: native.trays[0]!, setLocale: (next: string) => { current = resolveDesktopLocale(next) } }
+  const tray = new DesktopTray({ iconPath: 'C:/app/resources/tray.ico', locale: () => current,
+    activate, open, quit, ...withRestart ? { restart } : {} })
+  return { tray, activate, open, restart, quit, native: native.trays[0]!,
+    setLocale: (next: string) => { current = resolveDesktopLocale(next) } }
 }
 
 function labels(menu: MenuItemConstructorOptions[]): (string | undefined)[] {
@@ -48,15 +52,32 @@ it('shows the application icon with its name as the tooltip and an Open / Quit m
   expect(f.native.setContextMenu).toHaveBeenCalledWith({ template: native.menus[0] })
 })
 
-it('opens the window on a single click and routes menu entries to the open and quit actions', () => {
+it('keeps primary activation separate from the explicit Open and Quit menu actions', () => {
   const f = setup()
   f.native.emit('click')
-  expect(f.open).toHaveBeenCalledOnce()
+  expect(f.activate).toHaveBeenCalledOnce()
+  expect(f.open).not.toHaveBeenCalled()
   const menu = native.menus[0]!
   ;(menu[0] as { click: () => void }).click()
   ;(menu[2] as { click: () => void }).click()
-  expect(f.open).toHaveBeenCalledTimes(2)
+  expect(f.open).toHaveBeenCalledOnce()
   expect(f.quit).toHaveBeenCalledOnce()
+})
+
+it.each(['en', 'zh'])('offers a localized Linux restart entry (%s)', async (language) => {
+  const f = setup(language, true)
+  const menu = native.menus[0]!
+  await expect(JSON.stringify(labels(menu), null, 2) + '\n').toMatchFileSnapshot(`./expected/tray-linux-${language}.json`)
+  ;(menu[1] as { click: () => void }).click()
+  expect(f.restart).toHaveBeenCalledOnce()
+  expect(f.quit).not.toHaveBeenCalled()
+})
+
+it('removes the icon if its initial menu cannot be created', () => {
+  const failure = new Error('tray menu unavailable')
+  native.buildFromTemplate.mockImplementationOnce(() => { throw failure })
+  expect(() => setup()).toThrow(failure)
+  expect(native.trays[0]!.destroy).toHaveBeenCalledOnce()
 })
 
 it('relabels the menu in the current locale and ignores relabel after disposal', () => {

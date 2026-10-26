@@ -60,6 +60,23 @@ describe('DesktopQuitConfirmation', () => {
     }])
   })
 
+  it.each(['en', 'zh'])('names the Linux restart action and its task interruption in %s', async (language) => {
+    const f = setup('linux', async () => ({ activeTasks: true, scheduledTasks: true }), language)
+    expect(await f.confirmation.confirm('restart')).toBe(true)
+    await expect(JSON.stringify(f.shown[0], null, 2) + '\n')
+      .toMatchFileSnapshot(`./expected/tray-restart-linux-${language}.json`)
+  })
+
+  it('preserves the first requested action while another shutdown request joins its confirmation', async () => {
+    const inspected = Promise.withResolvers<DesktopQuitInspection>()
+    const f = setup('linux', () => inspected.promise)
+    const restart = f.confirmation.confirm('restart')
+    expect(f.confirmation.confirm('quit')).toBe(restart)
+    inspected.resolve({ activeTasks: true, scheduledTasks: false })
+    expect(await restart).toBe(true)
+    expect(f.shown[0]!.buttons).toEqual(['重启', '取消'])
+  })
+
   it('warns about running tasks when the inspection fails', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const f = setup('darwin', async () => { throw new Error('desktop quit: inspection timed out') })

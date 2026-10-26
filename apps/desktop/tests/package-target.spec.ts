@@ -19,6 +19,9 @@ describe('desktop package target', () => {
     expect(resolveDesktopPackageTarget('win-x64', 'win32', 'x64')).toMatchObject({
       platform: 'win32', arch: 'x64', builderPlatform: '--win', builderArch: '--x64',
     })
+    expect(resolveDesktopPackageTarget('linux-x64', 'linux', 'x64')).toMatchObject({
+      platform: 'linux', arch: 'x64', builderPlatform: '--linux', builderArch: '--x64',
+    })
   })
 
   it('allows an Apple Silicon host to build the Intel target through Rosetta', () => {
@@ -26,7 +29,9 @@ describe('desktop package target', () => {
   })
 
   it('rejects unsupported targets and hosts before building', () => {
-    expect(() => resolveDesktopPackageTarget('linux-x64', 'linux', 'x64')).toThrow(/unsupported target/u)
+    expect(() => resolveDesktopPackageTarget('linux-arm64', 'linux', 'arm64')).toThrow(/unsupported target/u)
+    expect(() => resolveDesktopPackageTarget('linux-x64', 'darwin', 'x64')).toThrow(/Linux x64/u)
+    expect(() => resolveDesktopPackageTarget('linux-x64', 'linux', 'arm64')).toThrow(/Linux x64/u)
     expect(() => resolveDesktopPackageTarget('win-x64', 'darwin', 'arm64')).toThrow(/Windows x64/u)
     expect(() => resolveDesktopPackageTarget('mac-arm64', 'darwin', 'x64')).toThrow(/Apple Silicon/u)
     expect(() => resolveDesktopPackageTarget('mac-arm64', 'linux', 'arm64')).toThrow(/macOS/u)
@@ -56,6 +61,16 @@ describe('desktop package target', () => {
     expect(parseDesktopPackageInvocation(['--', '--check'], 'darwin', 'arm64').check).toBe(true)
     expect(() => parseDesktopPackageInvocation(['mac-arm64', '--build-version', '  '], 'darwin', 'arm64'))
       .toThrow(/--build-version requires a value/u)
+  })
+
+  it('uses local unsigned packaging for Linux and rejects macOS notarization flags', () => {
+    expect(parseDesktopPackageInvocation([], 'linux', 'x64')).toMatchObject({
+      target: { name: 'linux-x64' }, unsigned: true, directory: false,
+    })
+    expect(parseDesktopPackageInvocation(['--dir'], 'linux', 'x64').directory).toBe(true)
+    expect(parseDesktopPackageInvocation(['--prepare-only'], 'linux', 'x64').prepareOnly).toBe(true)
+    expect(() => parseDesktopPackageInvocation(['--skip-notarization'], 'linux', 'x64')).toThrow(/signed macOS/u)
+    expect(() => parseDesktopPackageInvocation(['--build-version', 'auto'], 'linux', 'x64')).toThrow(/explicit --build-version/u)
   })
 
   it('keeps electron-builder publishing disabled for the separate validated upload', () => {

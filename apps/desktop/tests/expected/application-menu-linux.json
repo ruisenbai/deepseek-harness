@@ -1,0 +1,16 @@
+[
+  {
+    "role": "toggleDevTools",
+    "visible": false
+  },
+  {
+    "role": "toggleDevTools",
+    "visible": false,
+    "accelerator": "F12"
+  },
+  {
+    "role": "quit",
+    "visible": false,
+    "accelerator": "Control+Q"
+  }
+]

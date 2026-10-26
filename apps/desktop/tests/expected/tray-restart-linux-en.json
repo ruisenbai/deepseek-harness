@@ -1,0 +1,13 @@
+{
+  "type": "warning",
+  "title": "DeepSeek Harness",
+  "message": "Restart DeepSeek Harness?",
+  "detail": "Running tasks will be interrupted, and scheduled tasks will not run while the app is closed.",
+  "buttons": [
+    "Restart",
+    "Cancel"
+  ],
+  "defaultId": 0,
+  "cancelId": 1,
+  "noLink": true
+}

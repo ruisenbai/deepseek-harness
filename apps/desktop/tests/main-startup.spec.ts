@@ -98,12 +98,14 @@ const harness = await vi.hoisted(async () => {
     readonly moveTop = vi.fn()
     readonly setAlwaysOnTop = vi.fn()
     readonly restore = vi.fn()
+    readonly minimize = vi.fn()
     readonly setSize = vi.fn()
     readonly getBounds = vi.fn(() => ({ x: 0, y: 0, width: 800, height: 700 }))
     readonly setMinimumSize = vi.fn()
     readonly setTitleBarOverlay = vi.fn()
     readonly setVibrancy = vi.fn()
     readonly setBackgroundColor = vi.fn()
+    readonly setMenuBarVisibility = vi.fn()
     constructor(readonly options: { show: boolean; modal?: boolean }) {
       super(); if (windowFailure !== undefined) throw windowFailure; windows.push(this)
     }
@@ -1019,8 +1021,8 @@ describe('desktop main startup', () => {
     await edit
   })
 
-  it.each(['darwin', 'linux'] as const)('adds the product File menu and standard window commands only on macOS (%s)', async (platform) => {
-    vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
+  it('adds the product File menu and standard window commands on macOS', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
     await import('../src/main.ts')
     await harness.preparing.promise
     const describeItem = (item: MenuItemConstructorOptions): string | undefined =>
@@ -1029,13 +1031,25 @@ describe('desktop main startup', () => {
       .map(call => call[0])
       .find(items => items.some(item => item.role === 'editMenu'))
     if (template === undefined) throw new Error('application menu missing')
-    expect(template.map(describeItem)).toEqual(platform === 'darwin'
-      ? ['Desktop test', en.fileMenu, 'editMenu', 'windowMenu']
-      : ['Application', 'editMenu'])
+    expect(template.map(describeItem)).toEqual(['Desktop test', en.fileMenu, 'editMenu', 'windowMenu'])
     const application = template[0]!.submenu as MenuItemConstructorOptions[]
-    expect(application.filter(item => item.visible !== false).map(describeItem)).toEqual(platform === 'darwin'
-      ? ['about', 'separator', en.checkUpdatesMenu, en.cliCommandMenu, 'separator', 'hide', 'hideOthers', 'unhide', 'separator', 'quit']
-      : ['about', 'separator', en.checkUpdatesMenu, 'separator', 'quit'])
+    expect(application.filter(item => item.visible !== false).map(describeItem)).toEqual([
+      'about', 'separator', en.checkUpdatesMenu, en.cliCommandMenu, 'separator', 'hide', 'hideOthers', 'unhide', 'separator', 'quit',
+    ])
+    expect(harness.menu.setApplicationMenu).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the native draggable Linux titlebar without visible application or Edit menus', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    expect(harness.windows[0]!.options).not.toHaveProperty('frame', false)
+    expect(harness.windows[0]!.options).not.toHaveProperty('titleBarStyle')
+    expect(harness.windows[0]!.options).not.toHaveProperty('titleBarOverlay')
+    expect(harness.windows[0]!.setMenuBarVisibility).toHaveBeenCalledWith(false)
+    const template = harness.menu.buildFromTemplate.mock.calls[0]![0]
+    expect(template.filter(item => item.visible !== false)).toEqual([])
+    await expect(JSON.stringify(template, null, 2) + '\n').toMatchFileSnapshot('./expected/application-menu-linux.json')
     expect(harness.menu.setApplicationMenu).toHaveBeenCalledOnce()
   })
 
@@ -1336,6 +1350,154 @@ describe('desktop main startup', () => {
     window.destroy()
     hide()
     expect(window.hide).not.toHaveBeenCalled()
+  })
+
+  function linuxTrayAction(label: string): () => void {
+    const item = harness.menu.mock.calls.map(call => call[0]).findLast(items => items.some(entry => entry.label === label))
+      ?.find(entry => entry.label === label)
+    expect(item?.click).toBeTypeOf('function')
+    return (item as { click: () => void }).click
+  }
+
+  it('keeps Linux running after close and toggles restore/minimize independently of the Open menu', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    const host = await readyWorkspace()
+    const window = harness.windows[0]!
+    const tray = harness.trays[0]!
+    expect(tray.image).toEqual({ path: join('desktop-test-resources', 'icon.png') })
+    window.close()
+    expect(window.isDestroyed()).toBe(false)
+    expect(window.hide).toHaveBeenCalledOnce()
+    expect(harness.backgroundNotice.close).not.toHaveBeenCalled()
+    expect(host.stop).not.toHaveBeenCalled()
+    expect(harness.app.quit).not.toHaveBeenCalled()
+    window.visible = false
+    window.show.mockClear()
+    tray.emit('click')
+    expect(window.show).toHaveBeenCalledOnce()
+    expect(window.minimize).not.toHaveBeenCalled()
+    window.visible = true
+    tray.emit('click')
+    expect(window.minimize).toHaveBeenCalledOnce()
+    window.minimized = true
+    tray.emit('click')
+    expect(window.restore).toHaveBeenCalledOnce()
+    window.minimized = false
+    linuxTrayAction(en.openApplication)()
+    expect(window.show).toHaveBeenCalledTimes(3)
+    expect(window.minimize).toHaveBeenCalledOnce()
+    linuxTrayAction(en.quitApplication)()
+    await host.stopping.promise
+    host.exited.resolve()
+    await harness.quitCompleted.promise
+    expect(tray.destroy).toHaveBeenCalledOnce()
+    expect(harness.app.relaunch).not.toHaveBeenCalled()
+  })
+
+  it('quits on Linux close if the tray cannot be created instead of hiding an inaccessible window', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    harness.menu.mockImplementationOnce(() => ({ popup: harness.popup }))
+      .mockImplementationOnce(() => { throw new Error('tray unavailable') })
+    const host = await readyWorkspace()
+    expect(console.warn).toHaveBeenCalledWith('desktop tray: unavailable', expect.any(Error))
+    harness.windows[0]!.close()
+    await host.stopping.promise
+    host.exited.resolve()
+    await harness.quitCompleted.promise
+  })
+
+  it.each(['quit', 'restart'] as const)('retains the first Linux %s decision when another tray action is requested', async (firstAction) => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    const host = await readyWorkspace()
+    host.inspectQuit.mockResolvedValue({ activeTasks: true, scheduledTasks: false })
+    const answered = Promise.withResolvers<Electron.MessageBoxReturnValue>()
+    harness.dialog.showMessageBox.mockReturnValue(answered.promise)
+    const restart = linuxTrayAction(en.restartApplication)
+    const quit = linuxTrayAction(en.quitApplication)
+    const first = firstAction === 'restart' ? restart : quit
+    const second = firstAction === 'restart' ? quit : restart
+    first()
+    await vi.advanceTimersByTimeAsync(0)
+    second()
+    first()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(host.inspectQuit).toHaveBeenCalledOnce()
+    expect(harness.dialog.showMessageBox).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      message: firstAction === 'restart' ? en.restartTitle : en.quitTitle,
+    }))
+    expect(harness.app.relaunch).not.toHaveBeenCalled()
+    expect(host.stop).not.toHaveBeenCalled()
+    answered.resolve({ response: 0, checkboxChecked: false })
+    await host.stopping.promise
+    expect(harness.app.relaunch).toHaveBeenCalledTimes(firstAction === 'restart' ? 1 : 0)
+    host.exited.resolve()
+    await harness.quitCompleted.promise
+    restart()
+    expect(harness.app.relaunch).toHaveBeenCalledTimes(firstAction === 'restart' ? 1 : 0)
+  })
+
+  it('keeps Linux tasks running after cancelling a restart and does not relaunch on a later quit', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    const host = await readyWorkspace()
+    host.inspectQuit.mockResolvedValue({ activeTasks: true, scheduledTasks: true })
+    linuxTrayAction(en.restartApplication)()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(harness.app.relaunch).not.toHaveBeenCalled()
+    expect(host.stop).not.toHaveBeenCalled()
+    expect(harness.trays[0]!.destroy).not.toHaveBeenCalled()
+    harness.dialog.showMessageBox.mockResolvedValue({ response: 0, checkboxChecked: false })
+    linuxTrayAction(en.quitApplication)()
+    await host.stopping.promise
+    expect(harness.dialog.showMessageBox.mock.lastCall![0]).toMatchObject({ message: en.quitTitle })
+    host.exited.resolve()
+    await harness.quitCompleted.promise
+    expect(harness.app.relaunch).not.toHaveBeenCalled()
+  })
+
+  it('keeps Linux running and reports a relaunch failure', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    const host = await readyWorkspace()
+    harness.app.relaunch.mockImplementationOnce(() => { throw new Error('relaunch unavailable') })
+    const restart = linuxTrayAction(en.restartApplication)
+    restart()
+    restart()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(harness.app.relaunch).toHaveBeenCalledOnce()
+    expect(host.stop).not.toHaveBeenCalled()
+    expect(harness.trays[0]!.destroy).not.toHaveBeenCalled()
+    expect(harness.dialog.showErrorBox).toHaveBeenCalledWith(en.restartApplication, en.restartFailed)
+  })
+
+  it('waits for Host and embedded storage cleanup before completing a Linux restart', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    const host = await readyWorkspace()
+    const disposal = harness.deferPlatformDispose()
+    linuxTrayAction(en.restartApplication)()
+    await host.stopping.promise
+    expect(harness.app.relaunch).toHaveBeenCalledOnce()
+    expect(harness.trays[0]!.destroy).toHaveBeenCalledOnce()
+    host.exited.resolve()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(harness.app.quit).toHaveBeenCalledOnce()
+    disposal.resolve()
+    await harness.quitCompleted.promise
+    expect(harness.app.quit).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not relaunch after system shutdown overtakes a Linux restart confirmation', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    const host = await readyWorkspace()
+    const inspected = Promise.withResolvers<{ activeTasks: boolean; scheduledTasks: boolean }>()
+    host.inspectQuit.mockReturnValue(inspected.promise)
+    linuxTrayAction(en.restartApplication)()
+    harness.powerMonitor.emit('shutdown')
+    harness.app.quit()
+    await host.stopping.promise
+    inspected.resolve({ activeTasks: true, scheduledTasks: true })
+    host.exited.resolve()
+    await harness.quitCompleted.promise
+    expect(harness.app.relaunch).not.toHaveBeenCalled()
+    expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
   })
 
   it('focuses an existing shell dialog instead of replacing it with a close confirmation', async () => {

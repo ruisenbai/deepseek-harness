@@ -29,6 +29,8 @@ const state = vi.hoisted(() => ({
   moveTopWorkspace: vi.fn(),
   openDevTools: vi.fn(),
   closeWelcome: vi.fn(),
+  hideWelcome: vi.fn(),
+  welcomeListeners: new Map<string, (event: { preventDefault: () => void }) => void>(),
   welcomeLocale: undefined as DesktopLocale | undefined,
   preference: 'zh',
   hasApiKey: false,
@@ -79,6 +81,7 @@ vi.mock('electron', () => ({
     restore = vi.fn()
     focus = state.focusWorkspace
     moveTop = state.moveTopWorkspace
+    setMenuBarVisibility = vi.fn()
     hide = vi.fn()
     show = state.showWorkspace
     showInactive = state.showInactiveWorkspace
@@ -98,7 +101,7 @@ vi.mock('electron', () => ({
   Menu: { buildFromTemplate: state.menu, setApplicationMenu: vi.fn() },
   nativeImage: { createFromPath: (path: string) => ({ path }) },
 }))
-// The Windows tray relabels through Menu as well; keep the menu call counts below platform-neutral.
+// Tray relabeling has separate coverage; these assertions count application-menu updates.
 vi.mock('../src/tray.ts', () => ({ DesktopTray: class { relabel() {} dispose() {} } }))
 
 vi.mock('../src/paths.ts', () => ({ resolveDesktopPaths: () => ({ profile: '/profile' }) }))
@@ -159,7 +162,9 @@ vi.mock('../src/welcome-window.ts', () => ({
     state.welcomeLocale = locale
     state.operations = operations
     await state.beforeWelcome()
-    return { once: vi.fn(), close: state.closeWelcome, isDestroyed: () => false,
+    return { once: vi.fn(),
+      on: (name: string, listener: (event: { preventDefault: () => void }) => void) => { state.welcomeListeners.set(name, listener) },
+      close: state.closeWelcome, hide: state.hideWelcome, isDestroyed: () => false,
       show: vi.fn(), focus: vi.fn(), webContents: { send: vi.fn() } }
   },
 }))
@@ -172,14 +177,17 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-it.each([false, true])('starts welcome onboarding without carrying update focus into login or skip (Windows update=%s)', async (updated) => {
+it.each([
+  ['darwin', false], ['win32', true], ['linux', false],
+] as const)('starts welcome onboarding without carrying update focus into login or skip (%s, update=%s)', async (platform, updated) => {
   vi.resetModules()
   vi.clearAllMocks()
   state.preference = 'zh'
   state.hasApiKey = false
   state.operations = undefined
+  state.welcomeListeners.clear()
   state.accountState.mockResolvedValue({ status: 'signed-out', attempt: null, links: { usageUrl: '', topUpUrl: '' } })
-  if (updated) vi.stubGlobal('process', { ...process, platform: 'win32', argv: ['desktop', '--updated'] })
+  vi.stubGlobal('process', { ...process, platform, argv: updated ? ['desktop', '--updated'] : ['desktop'] })
   vi.useFakeTimers()
   vi.stubEnv('DSH_CLIENT_VERSION', '1.2.3')
   vi.stubEnv('DSH_DESKTOP_DEV_PROJECT_DIR', '/development-profile')
@@ -213,6 +221,15 @@ it.each([false, true])('starts welcome onboarding without carrying update focus 
     loading.resolve(undefined)
   }
   await vi.waitFor(() => { expect(state.operations).toBeDefined() })
+  if (platform === 'linux') {
+    await vi.waitFor(() => { expect(state.welcomeListeners.get('close')).toBeTypeOf('function') })
+    const event = { preventDefault: vi.fn() }
+    state.welcomeListeners.get('close')!(event)
+    expect(event.preventDefault).toHaveBeenCalledOnce()
+    expect(state.hideWelcome).toHaveBeenCalledOnce()
+    expect(state.quit).not.toHaveBeenCalled()
+    expect(state.stopHost).not.toHaveBeenCalled()
+  }
   expect(state.startHost).toHaveBeenCalledOnce()
   expect(state.loadWorkspace).toHaveBeenCalledExactlyOnceWith('dsh-app://app/')
   expect(state.showWorkspace).not.toHaveBeenCalled()
@@ -235,6 +252,11 @@ it.each([false, true])('starts welcome onboarding without carrying update focus 
   await expect(state.operations!.copySignInLink(attemptId)).rejects.toThrow('login link is unavailable')
   expect(state.copy).toHaveBeenCalledTimes(2)
   await state.operations!.skip()
+  if (platform === 'linux') {
+    const event = { preventDefault: vi.fn() }
+    state.welcomeListeners.get('close')!(event)
+    expect(event.preventDefault).not.toHaveBeenCalled()
+  }
   expect(state.loadWorkspace).not.toHaveBeenCalled()
   expect(state.showWorkspace).toHaveBeenCalledOnce()
   expect(state.moveTopWorkspace).not.toHaveBeenCalled()

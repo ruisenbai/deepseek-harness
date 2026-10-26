@@ -240,6 +240,7 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
       devTools: true,
     },
   })
+  if (process.platform === 'linux') window.setMenuBarVisibility(false)
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (['http:', 'https:'].includes(new URL(url).protocol)) void shell.openExternal(url)
     return { action: 'deny' }
@@ -342,6 +343,9 @@ async function main(): Promise<void> {
   let hostEnvironment: NodeJS.ProcessEnv = process.env
   const prepareHostEnvironment = async (): Promise<void> => { hostEnvironment = await loginShell }
   let quitting = false
+  // Repeated quit or restart requests keep the action named by the open confirmation.
+  let quitAction: 'quit' | 'restart' | undefined
+  let quitDecision: Promise<boolean> | undefined
   let startup: Promise<void> | undefined
   let workspaceRecovery: Promise<void> | undefined
   let mainWindow: BrowserWindow | undefined
@@ -1006,23 +1010,41 @@ async function main(): Promise<void> {
     { role: 'quit', ...(darwin ? { label: currentDesktopLocale().messages.quitApplication }
       : process.platform === 'win32' ? { label: currentDesktopLocale().messages.exitApplication } : {}) },
   ]
-  const devToolsItems: MenuItemConstructorOptions[] = [
+  const hiddenMenuItems: MenuItemConstructorOptions[] = [
     { role: 'toggleDevTools', visible: false },
     { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
+    // Linux has no visible application menu; retain its native quit shortcut.
+    ...process.platform === 'linux' ? [{ role: 'quit' as const, visible: false, accelerator: 'Control+Q' }] : [],
   ]
   const refreshApplicationMenu = (): void => {
-    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32' ? devToolsItems : [{
+    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32' || process.platform === 'linux' ? hiddenMenuItems : [{
       label: darwin ? app.name : currentDesktopLocale().messages.application,
-      submenu: [...applicationItems(), ...devToolsItems],
+      submenu: [...applicationItems(), ...hiddenMenuItems],
     }, ...platformMenus()]))
+    if (process.platform === 'linux') {
+      for (const window of BrowserWindow.getAllWindows()) window.setMenuBarVisibility(false)
+    }
     tray?.relabel()
   }
   refreshApplicationMenu()
-  const trayIconPath = development ? join(app.getAppPath(), 'resources', 'tray-windows.ico') : join(process.resourcesPath, 'tray.ico')
-  if (process.platform === 'win32') {
+  const trayIconPath = process.platform === 'linux' ? applicationIconPath
+    : development ? join(app.getAppPath(), 'resources', 'tray-windows.ico') : join(process.resourcesPath, 'tray.ico')
+  if (process.platform === 'win32' || process.platform === 'linux') {
     // The tray is the way back to a hidden window; without it, relaunching the application still focuses it.
     try {
       tray = new DesktopTray({ iconPath: trayIconPath, locale: currentDesktopLocale,
+        activate: () => {
+          if (quitting || shellInstallerOwnsQuit || sessionEnding) return
+          const window = welcomeWindow ?? mainWindow
+          if (process.platform === 'linux' && !isMandatory() && window !== undefined
+            && !window.isDestroyed() && window.isVisible() && !window.isMinimized()) window.minimize()
+          else focusPrimaryWindow()
+        },
+        ...process.platform === 'linux' ? { restart: () => {
+          if (quitting || shellInstallerOwnsQuit || sessionEnding) return
+          quitAction ??= 'restart'
+          app.quit()
+        } } : {},
         open: () => { focusPrimaryWindow() }, quit: () => { app.quit() } })
     } catch (error) { console.warn('desktop tray: unavailable', error) }
   }
@@ -1109,6 +1131,7 @@ async function main(): Promise<void> {
     window.on('close', (event) => {
       if (quitting || shellInstallerOwnsQuit || sessionEnding) return
       event.preventDefault()
+      if (process.platform === 'linux' && tray === undefined) { app.quit(); return }
       if (updateDialog.isOpen) { updateDialog.focus(); return }
       const hide = (): void => {
         if (!quitting && !shellInstallerOwnsQuit && !sessionEnding && !window.isDestroyed()) hideMainWindow(window)
@@ -1212,6 +1235,13 @@ async function main(): Promise<void> {
         skip: enterWorkspace,
       })
       const window = welcomeWindow
+      if (process.platform === 'linux') {
+        window.on('close', (event) => {
+          if (quitting || shellInstallerOwnsQuit || sessionEnding || enteredWorkspace || recovery.active || tray === undefined) return
+          event.preventDefault()
+          window.hide()
+        })
+      }
       window.once('closed', () => {
         void welcomeBackend?.account.state().then((state) => {
           if (state.attempt !== null && !enteredWorkspace) return welcomeBackend?.account.cancel(state.attempt.id)
@@ -1310,12 +1340,29 @@ async function main(): Promise<void> {
     if (quitting) return
     event.preventDefault()
     if (skipQuitConfirmation || sessionEnding) { finishQuit(); return }
-    void quitConfirmation.confirm().then((approved) => {
+    const action = quitAction ??= 'quit'
+    const decision = quitConfirmation.confirm(action)
+    if (decision === quitDecision) return
+    quitDecision = decision
+    void decision.then((approved) => {
       if (quitting || shellInstallerOwnsQuit) return
-      if (approved) { finishQuit(); return }
+      if (approved) {
+        if (action === 'restart') app.relaunch()
+        finishQuit()
+        return
+      }
+      quitAction = undefined
       // A quit that started from closing the welcome window destroyed it; a cancelled quit needs it back.
       if (!enteredWorkspace && !recovery.active) void showWelcome().catch((error: unknown) => { reportFatal(error, 'main') })
-    }).catch((error: unknown) => { console.error(error); if (!quitting && !shellInstallerOwnsQuit) finishQuit() })
+    }).catch((error: unknown) => {
+      console.error(error)
+      if (quitting || shellInstallerOwnsQuit) return
+      if (action === 'restart') {
+        quitAction = undefined
+        const { messages } = currentDesktopLocale()
+        dialog.showErrorBox(messages.restartApplication, messages.restartFailed)
+      } else finishQuit()
+    }).finally(() => { if (quitDecision === decision) quitDecision = undefined })
   })
 
   mainWindow = createMainWindow()
