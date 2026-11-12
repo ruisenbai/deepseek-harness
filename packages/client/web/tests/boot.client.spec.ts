@@ -7,6 +7,7 @@ import type {
 } from '@deepseek-ai/dsh-client-modules/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppWebEntry } from '../src/boot.ts'
+import { BootPage } from '../src/boot-page.ts'
 
 const MODULES_ID = '@deepseek-ai/dsh-client-modules'
 const REQUIRED_ID = '@deepseek-ai/dsh-client-ui-chat'
@@ -57,6 +58,26 @@ async function expectBootFailure(setup: () => void, message: string): Promise<vo
 }
 
 describe('bootstrap failure rendering', () => {
+  it('keeps startup artwork out of the module transport options', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const container = document.createElement('div')
+    document.body.append(container)
+    const create = vi.fn<(options: ClientModuleCreateOptions) => modulesClient.ClientModuleSystem>((options) => {
+      expect(options).not.toHaveProperty('whaleAtlasUrl')
+      throw new Error('artwork option stayed in the boot page')
+    })
+    installFacade(create)
+    const entry = new AppWebEntry(container, { whaleAtlasUrl: '/boot-whale.webp' })
+    try {
+      await entry.run()
+      expect(create).toHaveBeenCalledOnce()
+      expect(container.textContent).toContain('artwork option stayed in the boot page')
+    } finally {
+      await entry.dispose()
+    }
+  })
+
   it('leaves the loading page visible when a carrier owns fatal presentation', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const container = document.createElement('div')
@@ -137,6 +158,39 @@ describe('bootstrap failure rendering', () => {
       expect(warn).toHaveBeenCalledExactlyOnceWith('web boot: warning: 1 entry did not activate\nbroken: failed: Error: plugin activation failed')
       expect(container.textContent).not.toContain('Failed to load plugins')
     } finally {
+      await entry.dispose()
+    }
+  })
+
+  it('keeps a ready boot page until the first whale breach finishes', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const target = installFacade()
+    win.__DSH_BOOT__ = {
+      rev: 'graph',
+      entries: [{ id: 'renderer', url: '/renderer.js', rev: '1' }],
+      batches: [{ phase: 'application', url: '/application.js', rev: '1', entries: ['renderer'] }],
+    }
+    const mounted = vi.fn<(element: HTMLElement) => () => void>(() => () => {})
+    const firstCycle = Promise.withResolvers<undefined>()
+    const waiting = vi.spyOn(BootPage.prototype, 'waitForWhale').mockReturnValue(firstCycle.promise)
+    const entry = new AppWebEntry(container, {
+      loadBundle: async () => {
+        target.load({ id: 'renderer', factory: () => ({
+          apply: (ctx: Context) => { ctx.reflect.provide('uiRenderer', { mount: mounted }) },
+        }) })
+      },
+    })
+    const boot = entry.run()
+    try {
+      await vi.waitFor(() => { expect(waiting).toHaveBeenCalledOnce() })
+      expect(mounted).not.toHaveBeenCalled()
+      firstCycle.resolve(undefined)
+      await boot
+      expect(mounted).toHaveBeenCalledExactlyOnceWith(container)
+    } finally {
+      firstCycle.resolve(undefined)
+      await boot
       await entry.dispose()
     }
   })

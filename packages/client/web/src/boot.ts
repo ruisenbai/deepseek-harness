@@ -16,13 +16,18 @@ import { getStaticModules } from './seed.ts'
 import { installWindowDragRecall } from './window-drag/recall.ts'
 import './base.css'
 
-/** Module transport hook replaced by jsdom tests. */
-export type BootSeams = Pick<ClientModuleCreateOptions, 'loadBundle' | 'resolveAsset'>
+type ModuleSeams = Pick<ClientModuleCreateOptions, 'loadBundle' | 'resolveAsset'>
+
+/** Module transport hooks and artwork supplied by the application before plugins load. */
+export type BootSeams = ModuleSeams & {
+  /** URL of the startup whale atlas; absent callers use the progress spinner. */
+  readonly whaleAtlasUrl?: string
+}
 
 /** Browser boot entry consumed by `apps/web`. */
 export class AppWebEntry {
   private readonly container: HTMLElement
-  private readonly seams: BootSeams | undefined
+  private readonly seams: ModuleSeams
   private readonly page: BootPage
   private ctx: Context | undefined
   private stopDragRecall: (() => void) | undefined
@@ -32,12 +37,13 @@ export class AppWebEntry {
   /**
    * Draw the boot page; {@link run} starts the loader.
    * @param container - Application mount point.
-   * @param seams - Optional module transport replacement.
+   * @param seams - Optional module transport replacement and startup artwork URL.
    */
   constructor(container: HTMLElement, seams?: BootSeams) {
     this.container = container
-    this.seams = seams
-    this.page = new BootPage(container)
+    const { whaleAtlasUrl, ...moduleSeams } = seams ?? {}
+    this.seams = moduleSeams
+    this.page = new BootPage(container, whaleAtlasUrl)
   }
 
   /**
@@ -93,6 +99,7 @@ export class AppWebEntry {
           if (state !== 'failed') this.page.setState(name, state)
         },
       })
+      await this.page.waitForWhale()
       // The shell owns the one watcher that keeps Electron's window drag rects in
       // step with the rows that own them (electron#32341), so no chrome row has to
       // know that trap. It installs before the first mount, so the surface the

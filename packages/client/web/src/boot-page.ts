@@ -4,6 +4,7 @@
  * @module @deepseek-ai/dsh-client-web/src/boot-page
  */
 import type { LoaderEntryState } from './loader-status.ts'
+import { attachBootWhale, type BootWhaleHandle } from './boot-whale.ts'
 import css from './boot-page.module.css'
 
 /** Create a div with one module class and optional text. */
@@ -21,6 +22,8 @@ export class BootPage {
   private readonly wordmark: HTMLDivElement
   private readonly spinner: HTMLDivElement
   private readonly hint: HTMLDivElement
+  private graphic: HTMLElement
+  private whale: BootWhaleHandle | undefined
   private readonly states = new Map<string, LoaderEntryState>()
   private readonly active = new Set<string>()
   private total = 0
@@ -29,8 +32,9 @@ export class BootPage {
   /**
    * Build and attach the boot page.
    * @param container - Application mount point.
+   * @param atlasUrl - Optional startup artwork bundled by the application before plugin loading.
    */
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, atlasUrl?: string) {
     this.root = div(css.boot)
     this.root.dataset.dshBoot = ''
     this.card = div(css.card)
@@ -38,9 +42,25 @@ export class BootPage {
     this.spinner = div(css.spinner)
     this.spinner.dataset.dshBootSpinner = ''
     this.hint = div(css.hint, 'Loading plugins…')
-    this.card.append(this.wordmark, this.spinner, this.hint)
+    this.graphic = this.spinner
+    let canvas: HTMLCanvasElement | undefined
+    if (atlasUrl !== undefined) {
+      canvas = document.createElement('canvas')
+      canvas.className = css.whale ?? ''
+      canvas.dataset.dshBootWhale = ''
+      canvas.setAttribute('aria-hidden', 'true')
+      this.graphic = canvas
+    }
+    this.card.append(this.wordmark, this.graphic, this.hint)
     this.root.append(this.card)
     container.append(this.root)
+    if (atlasUrl !== undefined && canvas !== undefined) {
+      const handle = attachBootWhale(canvas, atlasUrl, () => {
+        this.showSpinner()
+      })
+      this.whale = handle
+      if (this.graphic === this.spinner) this.showSpinner()
+    }
     this.updateProgress()
   }
 
@@ -74,20 +94,40 @@ export class BootPage {
     this.render()
   }
 
+  /** Wait for the first breach before replacing a ready boot page with the application. */
+  waitForWhale(): Promise<void> {
+    return this.whale?.firstCycle ?? Promise.resolve()
+  }
+
   /** Detach the page before or after the UI renderer takes the mount point. */
   dispose(): void {
+    this.whale?.dispose()
+    this.whale = undefined
     this.root.remove()
+  }
+
+  /** Restore the progress arc when startup artwork cannot render. */
+  private showSpinner(): void {
+    this.whale?.dispose()
+    this.whale = undefined
+    this.graphic = this.spinner
+    if (this.failure === undefined && this.hint.parentElement === this.card) {
+      this.card.replaceChildren(this.wordmark, this.spinner, this.hint)
+    }
   }
 
   /** Redraw the state-dependent content below the wordmark. */
   private render(): void {
     const failed = [...this.states].filter(([, state]) => state === 'failed').map(([id]) => id)
     if (this.failure === undefined && failed.length === 0) {
-      if (this.spinner.parentElement !== this.card) {
-        this.card.replaceChildren(this.wordmark, this.spinner, this.hint)
+      if (this.hint.parentElement !== this.card) {
+        this.card.replaceChildren(this.wordmark, this.graphic, this.hint)
       }
       return
     }
+    this.whale?.dispose()
+    this.whale = undefined
+    this.graphic = this.spinner
     const report = div(css.failed)
     report.append(div(css.failedTitle, 'Failed to load plugins'))
     for (const id of failed) report.append(div(css.failedItem, id))

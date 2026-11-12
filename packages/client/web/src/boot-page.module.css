@@ -42,6 +42,16 @@
   color: var(--dsw-alias-label-tertiary, var(--dsh-boot-label-tertiary));
 }
 
+.whale {
+  display: block;
+  width: min(420px, 82vw, 64vh);
+  height: auto;
+  aspect-ratio: 16 / 9;
+  color: var(--dsh-boot-label-primary);
+  opacity: 0.95;
+  pointer-events: none;
+}
+
 .spinner {
   position: relative;
   width: 20px;
@@ -68,6 +78,10 @@
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
 }
 
 .failed {

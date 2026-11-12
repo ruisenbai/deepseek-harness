@@ -1,13 +1,20 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BootPage } from '../src/boot-page.ts'
+import { attachBootWhale } from '../src/boot-whale.ts'
 
-afterEach(() => { document.body.innerHTML = '' })
+vi.mock('../src/boot-whale.ts', () => ({ attachBootWhale: vi.fn() }))
+const attach = vi.mocked(attachBootWhale)
 
-function mount() {
+afterEach(() => {
+  document.body.innerHTML = ''
+  attach.mockReset()
+})
+
+function mount(atlasUrl?: string) {
   const el = document.createElement('div')
   document.body.append(el)
-  return { el, page: new BootPage(el) }
+  return { el, page: new BootPage(el, atlasUrl) }
 }
 
 describe('BootPage', () => {
@@ -31,6 +38,49 @@ describe('BootPage', () => {
     expect(spinner?.style.getPropertyValue('--dsh-boot-arc')).toBe('288deg')
     expect(el.textContent).toContain('Loading plugins…')
     expect(el.textContent).not.toContain('Failed to load plugins')
+  })
+
+  it('keeps the startup whale through progress updates and releases it on failure', async () => {
+    const dispose = vi.fn()
+    const firstCycle = Promise.withResolvers<undefined>()
+    attach.mockReturnValue({ firstCycle: firstCycle.promise, dispose })
+    const { el, page } = mount('/boot-whale.webp')
+    const canvas = el.querySelector('[data-dsh-boot-whale]')
+    expect(canvas).not.toBeNull()
+    expect(canvas?.getAttribute('aria-hidden')).toBe('true')
+    expect(el.querySelector('[data-dsh-boot-spinner]')).toBeNull()
+    expect(attach).toHaveBeenCalledExactlyOnceWith(canvas, '/boot-whale.webp', expect.any(Function))
+    page.setTotal(2)
+    page.setState('a', 'active')
+    expect(el.querySelector('[data-dsh-boot-whale]')).toBe(canvas)
+    const waiting = page.waitForWhale()
+    expect(waiting).toBe(firstCycle.promise)
+    firstCycle.resolve(undefined)
+    await waiting
+    page.fail('plugin failed')
+    expect(dispose).toHaveBeenCalledOnce()
+    expect(el.querySelector('[data-dsh-boot-whale]')).toBeNull()
+    expect(el.textContent).toContain('plugin failed')
+    page.dispose()
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+
+  it('restores progress when startup artwork cannot render', async () => {
+    const dispose = vi.fn()
+    attach.mockImplementation((_canvas, _url, onUnavailable) => {
+      onUnavailable()
+      return { firstCycle: Promise.resolve(), dispose }
+    })
+    const { el, page } = mount('/missing.webp')
+    expect(el.querySelector('[data-dsh-boot-whale]')).toBeNull()
+    const spinner = el.querySelector<HTMLElement>('[data-dsh-boot-spinner]')
+    expect(spinner).not.toBeNull()
+    expect(dispose).toHaveBeenCalledOnce()
+    await page.waitForWhale()
+    page.setTotal(2)
+    page.setState('a', 'active')
+    expect(spinner?.style.getPropertyValue('--dsh-boot-arc')).toBe('180deg')
+    page.dispose()
   })
 
   it('lists failed entries', () => {
