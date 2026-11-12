@@ -35,6 +35,7 @@ const state = vi.hoisted(() => ({
   welcomeListeners: new Map<string, (event: { preventDefault: () => void }) => void>(),
   welcomeLocale: undefined as DesktopLocale | undefined,
   preference: 'zh',
+  themePreference: 'system',
   hasApiKey: false,
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   listeners: new Map<string, (...args: unknown[]) => void>(),
@@ -42,7 +43,7 @@ const state = vi.hoisted(() => ({
   windowOptions: undefined as BrowserWindowConstructorOptions | undefined,
   menu: vi.fn(),
   operations: undefined as WelcomeOperations | undefined,
-  nativeTheme: { themeSource: 'system', shouldUseDarkColors: false },
+  nativeTheme: { themeSource: 'system', shouldUseDarkColors: false, on: vi.fn(), removeListener: vi.fn() },
 }))
 
 vi.mock('../src/crash-report.ts', async importOriginal => ({
@@ -85,6 +86,7 @@ vi.mock('electron', () => ({
     moveTop = state.moveTopWorkspace
     setMenuBarVisibility = vi.fn()
     hide = vi.fn()
+    setBackgroundColor = vi.fn()
     show = state.showWorkspace
     showInactive = state.showInactiveWorkspace
     async loadURL(url: string) { state.contents = this.webContents; await state.loadWorkspace(url); this.ready?.() }
@@ -123,6 +125,7 @@ vi.mock('../src/host-process.ts', () => ({
     fetch() {
       return Promise.resolve(Response.json({
         loggedIn: false, hasApiKey: state.hasApiKey, writable: true, localePreference: state.preference,
+        themePreference: state.themePreference,
       }))
     }
   },
@@ -133,7 +136,8 @@ vi.mock('../src/welcome-backend.ts', () => ({
     readLocalePreference: async () => state.preference,
     read: async () => {
       await state.beforeRead()
-      return { loggedIn: false, hasApiKey: state.hasApiKey, writable: true, localePreference: state.preference }
+      return { loggedIn: false, hasApiKey: state.hasApiKey, writable: true,
+        localePreference: state.preference, themePreference: state.themePreference }
     },
     save: async () => ({ ok: true }),
     account: {
@@ -185,6 +189,7 @@ it.each([
   vi.resetModules()
   vi.clearAllMocks()
   state.preference = 'zh'
+  state.themePreference = updated ? 'dark' : 'light'
   state.hasApiKey = false
   state.operations = undefined
   state.welcomeListeners.clear()
@@ -204,7 +209,10 @@ it.each([
   const reading = Promise.withResolvers<undefined>()
   const loading = Promise.withResolvers<undefined>()
   state.beforeRead.mockReturnValueOnce(reading.promise)
-  state.beforeWelcome.mockReturnValueOnce(loading.promise)
+  state.beforeWelcome.mockImplementationOnce(async () => {
+    expect(state.nativeTheme.themeSource).toBe(state.themePreference)
+    await loading.promise
+  })
   const activate = () => {
     state.appListeners.get('second-instance')!()
     state.appListeners.get('open-url')!({ preventDefault: vi.fn() }, 'dsh://open')
