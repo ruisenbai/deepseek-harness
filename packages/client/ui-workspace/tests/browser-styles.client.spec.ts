@@ -122,8 +122,12 @@ describe('WorkspaceBrowser.module.css list', () => {
   it('keeps the overflow control, search field, and row heights', () => {
     expect(declarations('.sessionOverflowButton')?.get('height')).toBe('28px')
     expect(declarations('.searchExpanded')?.get('height')).toBe('32px')
-    expect(rowDeclarations('.projectRow')?.get('height')).toBe('32px')
-    expect(rowDeclarations('.sessionRow')?.get('height')).toBe('32px')
+    expect(rowDeclarations('.projectRow')?.get('height')).toBe(
+      'max(32px, calc(var(--dsh-sidebar-line-height, var(--dsw-font-base-16-line-height)) + 8px))',
+    )
+    expect(rowDeclarations('.sessionRow')?.get('height')).toBe(
+      'max(32px, calc(var(--dsh-sidebar-line-height, var(--dsw-font-base-16-line-height)) + 8px))',
+    )
     // One leading status cell for every session row, grouped or flat: the cell
     // hosts either the row's status dot or the leading seat, and it reserves its
     // own box, so the title's one shared margin below needs no per-view override.

@@ -2,6 +2,7 @@ import type { MenuItemConstructorOptions } from 'electron'
 import { afterEach, expect, it, vi } from 'vitest'
 import { resolveDesktopLocale } from '../src/locale.ts'
 import { DesktopTray } from '../src/tray.ts'
+import type { DesktopSidebarFontSize } from '../src/sidebar-font-size.ts'
 
 const native = await vi.hoisted(async () => {
   const { EventEmitter } = await import('node:events')
@@ -27,21 +28,82 @@ vi.mock('electron', () => ({
 
 afterEach(() => { native.trays.length = 0; native.menus.length = 0; vi.clearAllMocks() })
 
-function setup(locale = 'en', withRestart = false) {
+function setup(locale = 'en', withRestart = false, withFont = false) {
   let current = resolveDesktopLocale(locale)
   const activate = vi.fn()
   const open = vi.fn()
   const restart = vi.fn()
   const quit = vi.fn()
+  let size: DesktopSidebarFontSize = 16
+  let saving = false
+  const change = vi.fn((next: DesktopSidebarFontSize) => { size = next })
   const tray = new DesktopTray({ iconPath: 'C:/app/resources/tray.ico', locale: () => current,
-    activate, open, quit, ...withRestart ? { restart } : {} })
-  return { tray, activate, open, restart, quit, native: native.trays[0]!,
+    activate, open, quit, ...withRestart ? { restart } : {},
+    ...withFont ? { sidebarFont: { size: () => size, saving: () => saving, change } } : {} })
+  return { tray, activate, open, restart, quit, change, native: native.trays[0]!,
+    setSize: (next: DesktopSidebarFontSize) => { size = next },
+    setSaving: (next: boolean) => { saving = next },
     setLocale: (next: string) => { current = resolveDesktopLocale(next) } }
 }
 
 function labels(menu: MenuItemConstructorOptions[]): (string | undefined)[] {
   return menu.map(item => item.type === 'separator' ? 'separator' : item.label)
 }
+
+function fontActions(): MenuItemConstructorOptions[] {
+  const settings = native.menus.at(-1)![2]?.submenu
+  if (!Array.isArray(settings)) throw new Error('missing settings submenu')
+  const actions = settings[0]?.submenu
+  if (!Array.isArray(actions)) throw new Error('missing font actions')
+  return actions
+}
+
+interface MenuSnapshot {
+  label: string | undefined
+  type: string | undefined
+  enabled: boolean | undefined
+  submenu?: MenuSnapshot[]
+}
+
+function snapshot(menu: MenuItemConstructorOptions[]): MenuSnapshot[] {
+  return menu.map(({ label, type, enabled, submenu }) => ({
+    label, type, enabled, ...Array.isArray(submenu) ? { submenu: snapshot(submenu) } : {},
+  }))
+}
+
+it.each(['en', 'zh'])('shows localized sidebar settings and their current size (%s)', async (language) => {
+  const f = setup(language, true, true)
+  await expect(JSON.stringify(snapshot(native.menus[0]!), null, 2) + '\n')
+    .toMatchFileSnapshot(`./expected/tray-sidebar-linux-${language}.json`)
+  const actions = fontActions()
+  ;(actions[0] as { click: () => void }).click()
+  expect(f.change).toHaveBeenLastCalledWith(17)
+  ;(actions[1] as { click: () => void }).click()
+  expect(f.change).toHaveBeenLastCalledWith(15)
+  ;(actions[2] as { click: () => void }).click()
+  expect(f.change).toHaveBeenLastCalledWith(16)
+  expect(f.quit).not.toHaveBeenCalled()
+  expect(f.restart).not.toHaveBeenCalled()
+})
+
+it.each([14, 15, 16, 17, 18, 19, 20] as const)('disables unavailable actions at %ipx and all font actions during a save', (size) => {
+  const f = setup('en', true, true)
+  f.setSize(size)
+  f.tray.relabel()
+  const actions = fontActions()
+  expect(actions.map(item => item.enabled)).toEqual([size < 20, size > 14, size !== 16])
+  if (size === 20) {
+    ;(actions[0] as { click: () => void }).click()
+    expect(f.change).not.toHaveBeenCalled()
+  }
+  if (size === 14) {
+    ;(actions[1] as { click: () => void }).click()
+    expect(f.change).not.toHaveBeenCalled()
+  }
+  f.setSaving(true)
+  f.tray.relabel()
+  expect(fontActions().map(item => item.enabled)).toEqual([false, false, false])
+})
 
 it('shows the application icon with its name as the tooltip and an Open / Quit menu', () => {
   const f = setup()

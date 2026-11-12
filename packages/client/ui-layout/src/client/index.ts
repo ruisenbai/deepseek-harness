@@ -21,6 +21,10 @@ import { LayoutController } from './service.ts'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { en, ja, es, fr, de, ru, pt, zh } from './shortcut-locales.ts'
 import { ThemePresenter } from './theme-presenter.ts'
+import { LinuxWindowControls } from './LinuxWindowControls.tsx'
+import type { WindowControlsInjected } from './LinuxWindowControls.tsx'
+import type { DesktopWindowControls } from '../window-controls.ts'
+import * as windowControlLocales from './window-control-locales.ts'
 
 // Contract exports only (export-convergence rule: cross-package consumers
 // keep a symbol exported; test-only/package-internal symbols live off /src).
@@ -42,6 +46,8 @@ declare module '@deepseek-ai/cordis' {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
+    /** Linux native window actions. */
+    'window.controls': keyof typeof windowControlLocales.en
     /** Layout keyboard command labels. */
     'shortcuts.layout': keyof typeof zh
   }
@@ -160,6 +166,7 @@ export const inject = ['slots', 'theme', 'locale', 'shortcuts']
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
+  ctx.effect(() => ctx.locale.register('window.controls', windowControlLocales), 'layout: window control labels')
   ctx.effect(() => ctx.locale.register('shortcuts.layout', { zh, en, ja, es, fr, de, ru, pt }), 'layout: command labels')
   const t = ctx.locale.bind('shortcuts.layout')
 
@@ -203,6 +210,20 @@ export function apply(ctx: ClientContext): void {
       store,
       inject: (): AppFrameInjected => ({ hooks: { foldedLandscape } }),
     }, AppFrame)
+    const carrier = globalThis as typeof globalThis & { dshDesktop?: { windowControls?: DesktopWindowControls } }
+    const bridge = carrier.dshDesktop?.windowControls
+    let disposeWindowControls: (() => void) | undefined
+    if (bridge !== undefined) {
+      const maximized: HostObservable<boolean> = {
+        getSnapshot: () => bridge.isMaximized(), subscribe: listener => bridge.subscribe(listener),
+      }
+      disposeWindowControls = ctx.slots.register({
+        name: 'shell.overlay',
+        id: 'linux-window-controls',
+        locale: 'window.controls',
+        inject: (): WindowControlsInjected => ({ hooks: { maximized }, command: action => bridge.command(action) }),
+      }, LinuxWindowControls)
+    }
     const disposeShortcut = ctx.shortcuts.register({
       id: 'sidebar.left.toggle' as ShortcutCommandId, label: () => t('toggle'), aliases: ['sidebar', 'toggle left sidebar'],
       defaults: {
@@ -223,6 +244,7 @@ export function apply(ctx: ClientContext): void {
       disposeShortcut()
       layout.dispose()
       disposePanels()
+      disposeWindowControls?.()
       disposeRegistration()
       disposePanelInfo()
       // provide()'s disposer settles asynchronously; teardown is synchronous fire-and-forget.

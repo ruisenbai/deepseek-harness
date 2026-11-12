@@ -53,14 +53,15 @@ export interface WindowDragRecallOptions {
 
 /**
  * Watch the window's marked drag rows and pulse the recall mark whenever their
- * geometry can have moved. Installs nothing outside the darwin platform, where no
- * app-region rule exists.
+ * geometry can have moved. Installs only on macOS and Linux Desktop documents,
+ * where the shell declares the marked rows draggable.
  * @param options - the document to watch and the two scheduling seams.
  * @returns a disposer that stops watching, drops any pending frame, and clears the mark.
  */
 export function installWindowDragRecall(options: WindowDragRecallOptions): () => void {
   const doc = options.document
-  if (doc.documentElement.dataset.platform !== 'darwin') return () => {}
+  const platform = doc.documentElement.dataset.platform
+  if (platform !== 'darwin' && platform !== 'linux') return () => {}
   const scheduleFrame = options.scheduleFrame ?? defaultScheduleFrame
   const watchBox = options.watchBox ?? defaultWatchBox
   /** The last frame's measurement per row, the baseline a change is read against. */

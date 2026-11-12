@@ -220,3 +220,31 @@ it.each([false, true])('leaves an uncertain write for explicit recovery, committ
   await expect(fs.access(`${file.path}.lock`)).rejects.toMatchObject({ code: 'ENOENT' })
   expect(await settings.load()).toEqual({ kind: 'ready', channel: committed ? 'stable' : 'nightly' })
 })
+
+
+it('keeps concurrent tray and channel saves under the shared lock without losing the other fields', async () => {
+  const { root, file } = await fixture('{"sidebarFontSize":16,"updates":{"channel":"stable"}}')
+  const started = Promise.withResolvers<undefined>()
+  const release = Promise.withResolvers<undefined>()
+  const holder = atomic.withFileLock(file.path, async () => {
+    started.resolve(undefined)
+    await release.promise
+    await writeFile(file.path, '{"sidebarFontSize":16,"updates":{"channel":"stable","future":3},"other":4}')
+  })
+  const saves: Promise<void>[] = []
+  onTestFinished(async () => { release.resolve(undefined); await Promise.allSettled([holder, ...saves]) })
+  await started.promise
+  const attempting = Promise.withResolvers<undefined>()
+  const originalLock = atomic.withFileLock
+  let attempts = 0
+  vi.spyOn(atomic, 'withFileLock').mockImplementation(<T>(path: string, operation: () => Promise<T>, options?: atomic.FileLockOptions): Promise<T> => {
+    if (++attempts === 2) attempting.resolve(undefined)
+    return originalLock(path, operation, options)
+  })
+  saves.push(file.saveSidebarFontSize(17), new DesktopSettingsFile(root).saveUpdates({ channel: 'nightly' }))
+  await attempting.promise
+  release.resolve(undefined)
+  await Promise.all([holder, ...saves])
+  expect(JSON.parse(await readFile(file.path, 'utf8'))).toEqual({ sidebarFontSize: 17, updates: { channel: 'nightly', future: 3 }, other: 4 })
+  await expect(fs.access(`${file.path}.lock`)).rejects.toMatchObject({ code: 'ENOENT' })
+})

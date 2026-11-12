@@ -1,0 +1,36 @@
+[
+  {
+    "label": "打开 DeepSeek Harness"
+  },
+  {
+    "label": "重启"
+  },
+  {
+    "label": "设置",
+    "submenu": [
+      {
+        "label": "左栏文字大小（16px）",
+        "submenu": [
+          {
+            "label": "增大",
+            "enabled": true
+          },
+          {
+            "label": "缩小",
+            "enabled": true
+          },
+          {
+            "label": "恢复默认（16px）",
+            "enabled": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "separator"
+  },
+  {
+    "label": "退出 DeepSeek Harness"
+  }
+]

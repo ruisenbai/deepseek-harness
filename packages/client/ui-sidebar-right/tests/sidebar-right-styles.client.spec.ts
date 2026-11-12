@@ -8,6 +8,13 @@ const css = readFileSync(fileURLToPath(new URL('../src/client/shell/SidebarRight
 const host = String.raw`:global\(\[data-dockkit-host='dock'\]\)`
 
 describe('SidebarRight.module.css', () => {
+  it('reserves native Linux button width in corner tab strips without lowering the panel', () => {
+    expect(css).not.toContain('top: var(--dsh-frame-chrome-top)')
+    expect(css).toContain(':global([data-dockkit-strip]:has([data-dockkit-strip-chrome]))')
+    expect(css).toContain('--dsh-dockkit-strip-inline-end: max(6px, calc(var(--dsh-linux-controls-end, 0px) + 8px))')
+    expect(css).toContain('--dsh-dockkit-strip-inline-start: max(10px, calc(var(--dsh-linux-controls-start, 0px) + 8px))')
+  })
+
   it('starts docked items mounted by an opening at the closed position', () => {
     expect(css).toMatch(new RegExp(String.raw`@starting-style\s*\{\s*\.panel\[data-sidebar-right-opening\] ${host},[^{}]*\{`
       + String.raw`\s*transform: translateX\(var\(--dsh-sidebar-width\)\);\s*}\s*}`))

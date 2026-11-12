@@ -48,6 +48,12 @@
   margin-left: auto;
 }
 
+:global([data-linux-titlebar]) .header {
+  --conversation-header-start: max(20px, calc(var(--dsh-linux-header-start, 0px) + 12px));
+  padding-inline-start: var(--conversation-header-start);
+  padding-inline-end: max(28px, calc(var(--dsh-linux-header-end, 0px) + 28px));
+}
+
 /* macOS hiddenInset titlebar: the header block owns the window drag over its
    own box — title row plus the view tab strip, so the draggable geometry is the
    header's geometry and no frame band has to match its height. The header marks
@@ -55,10 +61,10 @@
    subtract their whole boxes, and individual controls are covered by the base.css
    interactive-element rule. A covering overlay lives beside #root
    (ui-settings-general), which puts it after this row in document order. */
-:global([data-platform='darwin']) .headerLeading,
-:global([data-platform='darwin']) .headerActions,
-:global([data-platform='darwin']) .headerUtilities,
-:global([data-platform='darwin']) .headerCorner {
+:global(:is([data-platform='darwin'], [data-platform='linux'])) .headerLeading,
+:global(:is([data-platform='darwin'], [data-platform='linux'])) .headerActions,
+:global(:is([data-platform='darwin'], [data-platform='linux'])) .headerUtilities,
+:global(:is([data-platform='darwin'], [data-platform='linux'])) .headerCorner {
   -webkit-app-region: no-drag;
 }
 
@@ -78,7 +84,7 @@
      controls, ui-layout AppFrame) when it is published; the header already
      pads 20px of it. Zero everywhere else (the fallback makes the max
      negative). */
-  padding-inline-start: max(0px, calc(var(--dsh-frame-leading-clearance, 0px) - 20px));
+  padding-inline-start: max(0px, calc(var(--dsh-frame-leading-clearance, 0px) - var(--conversation-header-start, 20px)));
 }
 
 /* Header actions do not shrink, so on a narrow row they overflow the cluster.

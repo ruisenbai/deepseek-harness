@@ -1,0 +1,36 @@
+[
+  {
+    "label": "Open DeepSeek Harness"
+  },
+  {
+    "label": "Restart"
+  },
+  {
+    "label": "Settings",
+    "submenu": [
+      {
+        "label": "Left sidebar text (16px)",
+        "submenu": [
+          {
+            "label": "Increase",
+            "enabled": true
+          },
+          {
+            "label": "Decrease",
+            "enabled": true
+          },
+          {
+            "label": "Reset to default (16px)",
+            "enabled": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "separator"
+  },
+  {
+    "label": "Quit DeepSeek Harness"
+  }
+]

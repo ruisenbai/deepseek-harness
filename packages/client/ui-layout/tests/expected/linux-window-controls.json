@@ -1,0 +1,12 @@
+{
+  "windowed": [
+    "Minimize",
+    "Maximize",
+    "Close"
+  ],
+  "maximized": [
+    "Minimize",
+    "Restore window",
+    "Close"
+  ]
+}

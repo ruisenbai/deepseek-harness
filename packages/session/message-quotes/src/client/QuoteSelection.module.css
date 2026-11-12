@@ -8,6 +8,8 @@
   box-shadow: var(--dsw-elevation-panel);
   color: var(--dsw-alias-label-primary);
   font: var(--dsw-font-xs-13);
+  font-size: calc(var(--dsh-content-font-size, 14px) - 1px);
+  line-height: calc(var(--dsh-content-font-size, 14px) + 6px);
   cursor: pointer;
 }
 

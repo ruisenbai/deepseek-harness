@@ -18,7 +18,7 @@
   box-sizing: border-box;
   background: var(--dsw-specific-sidebar-fill);
   color: var(--dsw-alias-label-primary);
-  font-size: 14px;
+  font-size: var(--dsh-sidebar-font-size, var(--dsw-font-base-16-font-size));
   /* The sidebar is elevated above the conversation surface, so a revealed
      scrollbar uses the l2 pair. .quietBars hides it without changing layout. */
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
@@ -251,6 +251,16 @@
   overflow: visible;
 }
 
+:global([data-linux-titlebar]) .root:not(.collapsed) .logoRow {
+  padding-inline-start: max(8px, calc(var(--dsh-linux-header-start, 0px) + 4px));
+  padding-inline-end: max(0px, calc(var(--dsh-linux-header-end, 0px) + 4px));
+}
+
+/* A narrow rail cannot hold left-side native buttons and its toggle on the same row. */
+:global([data-linux-controls-start]) .collapsed .logoRow {
+  margin-top: max(0px, calc(var(--dsh-linux-controls-height, 0px) - 10px));
+}
+
 /* Brand group (figma I133:7632): the full wordmark rides the text ink
    (figma flows: the main-screen instance is black; blue is brand
    emphasis only). A button only in behavior (New Session shortcut): the
@@ -425,17 +435,17 @@
   align-items: center;
   justify-content: center;
   gap: 0;
-  height: 38px;
-  padding: 8px 12px;
+  height: max(38px, calc(var(--dsh-sidebar-line-height, var(--dsw-font-base-strong-16-line-height)) + 14px));
+  padding: 6px 12px;
   margin: 0 calc(var(--dsh-sidebar-paint-inset) + 1px);
   box-sizing: border-box;
   border: 0.5px solid var(--dsw-alias-border-l3);
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-button-elevated-fill);
   color: var(--dsw-alias-label-primary);
-  font-size: 14px;
+  font-size: var(--dsh-sidebar-font-size, var(--dsw-font-base-strong-16-font-size));
   font-weight: 500;
-  line-height: 22px;
+  line-height: var(--dsh-sidebar-line-height, var(--dsw-font-base-strong-16-line-height));
   cursor: pointer;
   overflow: hidden;
 }
@@ -697,7 +707,7 @@
   background-clip: padding-box;
   color: var(--dsw-alias-label-primary);
   font: inherit;
-  line-height: 22px;
+  line-height: var(--dsh-sidebar-line-height, var(--dsw-font-base-16-line-height));
   text-align: left;
   cursor: pointer;
 }

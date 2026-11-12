@@ -60,7 +60,7 @@
 
 .sweep,
 .highlight {
-  animation-duration: 1.5s;
+  animation-duration: var(--dsh-text-shimmer-duration, 1.5s);
   animation-delay: 0.3s;
   animation-timing-function: steps(48, end);
   animation-iteration-count: infinite;

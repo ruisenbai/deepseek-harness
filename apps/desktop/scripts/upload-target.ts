@@ -54,7 +54,7 @@ export function resolveCredentialUploadEnvironment(
   }
 }
 
-function purgeConfig(environment: NodeJS.ProcessEnv, target: DesktopPackageTargetName, publicUrl?: string) {
+function purgeConfig(environment: NodeJS.ProcessEnv, target: DesktopAutoUpdateTarget, publicUrl?: string) {
   try {
     return resolveDesktopPurgeConfig(environment, target, publicUrl)
   } catch (error) {

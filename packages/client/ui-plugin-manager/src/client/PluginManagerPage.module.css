@@ -60,6 +60,12 @@
   max-width: 960px;
 }
 
+:global([data-linux-titlebar]) .pageBody > .pageBar {
+  padding-inline-start: max(var(--plugin-page-inset), calc(var(--dsh-linux-header-start, 0px) + 12px),
+    calc(var(--dsh-frame-leading-clearance, 0px) + 12px));
+  padding-inline-end: max(var(--plugin-page-inset), calc(var(--dsh-linux-header-end, 0px) + 12px));
+}
+
 /* Spans the page's full width, so its scrollbar sits at the page edge, and re-centres the column inside. */
 .page > .pageBody {
   flex: 1;
@@ -1427,6 +1433,14 @@ label.registryOption {
 
 .detailTop {
   flex-direction: column;
+}
+
+:global([data-linux-titlebar]) .detailTop,
+:global([data-linux-titlebar]) .moreHead {
+  box-sizing: border-box;
+  padding-inline-start: max(0px, calc(var(--dsh-linux-header-start, 0px) + 12px - var(--plugin-page-inset)),
+    calc(var(--dsh-frame-leading-clearance, 0px) + 12px - var(--plugin-page-inset)));
+  padding-inline-end: max(0px, calc(var(--dsh-linux-header-end, 0px) + 12px - var(--plugin-page-inset)));
 }
 
 :global([data-platform='darwin']) .detailTop,

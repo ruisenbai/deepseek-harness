@@ -1,5 +1,5 @@
 /**
- * macOS app-region subtraction, asserted against dockkit.module.css on disk: an
+ * macOS/Linux app-region subtraction, asserted against dockkit.module.css on disk: an
  * embedder may pin the surface at the window's top edge (the right sidebar does),
  * so the strip row marks itself `data-window-drag` in markup (TabPanel) and ui-web
  * base.css drags the row over its own box. Electron composes app-regions from
@@ -26,10 +26,11 @@ const regionRules = [...css.matchAll(/(?<sel>[^{}]+)\{(?<body>[^{}]*)\}/g)]
     /-webkit-app-region:\s*([^;]+);/.exec(body)?.[1]?.trim(),
   ] as const)
 
-it('keeps Windows floating headers 20px below the caption, including restored positions', () => {
-  const captionRule = css.split(':global(html[data-windows-titlebar]) .float')[1]?.split('}')[0]
-  expect(captionRule).toContain('--dsh-dockkit-float-top: calc(var(--dsh-windows-titlebar-height) + 20px);')
-  expect(css).toMatch(/:global\(html\[data-windows-titlebar\]\[data-fullscreen\]\) \.float\s*\{\s*--dsh-dockkit-float-top: 20px;/)
+it.each(['windows', 'linux'])('keeps %s floating headers 20px below the caption, including restored positions', (platform) => {
+  const captionRule = css.split(`:global(html[data-${platform}-titlebar]) .float`)[1]?.split('}')[0]
+  expect(captionRule).toContain(`--dsh-dockkit-float-top: calc(var(--dsh-${platform}-titlebar-height) + 20px);`)
+  const fullscreenRule = css.split(`:global(html[data-${platform}-titlebar][data-fullscreen]) .float`)[1]?.split('}')[0]
+  expect(fullscreenRule).toContain('--dsh-dockkit-float-top: 20px;')
 })
 
 it('clamps a resting floating panel\'s position and size into the viewport and below the caption floor', () => {
@@ -42,7 +43,7 @@ it('clamps a resting floating panel\'s position and size into the viewport and b
   expect(floatRule).toContain('height: min(var(--dsh-dockkit-float-height), 100dvh - var(--dsh-dockkit-float-top, 0px));')
 })
 
-describe('macOS app-region ownership', () => {
+describe('macOS/Linux app-region ownership', () => {
   it('subtracts panes, strip-end chrome, floats, and dividers without declaring drag', () => {
     // The strip row's drag is the markup mark's job: a sheet that declares it
     // here would drag the same box twice and hide the row from the ownership gate.
@@ -51,13 +52,13 @@ describe('macOS app-region ownership', () => {
     const [selector, value] = regionRules[0]!
     expect(value).toBe('no-drag')
     for (const part of ['.pane', '.stripChrome', '.float', '.divider']) {
-      expect(selector, part).toContain(`:global(:where(html[data-platform='darwin'])) ${part}`)
+      expect(selector, part).toContain(`:global(:where(html:is([data-platform='darwin'], [data-platform='linux']))) ${part}`)
     }
   })
 
-  it('scopes the subtraction to the darwin root', () => {
+  it('scopes the subtraction to the desktop roots', () => {
     for (const [selector] of regionRules) {
-      expect(selector).toContain("html[data-platform='darwin']")
+      expect(selector).toContain("html:is([data-platform='darwin'], [data-platform='linux'])")
     }
   })
 })

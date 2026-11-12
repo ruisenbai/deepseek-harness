@@ -61,8 +61,10 @@ import { DesktopMandatoryUpdatePolicy, resolveDesktopPolicyConfig, type DesktopP
 import { desktopClientMetadata, desktopClientVersion } from './client-metadata.ts'
 import { DesktopMandatoryUpdateWindow } from './mandatory-update-window.ts'
 import { DesktopPolicyTestAuth } from './policy-test-auth.ts'
-import { readDesktopSettings } from './settings.ts'
+import { readDesktopSettings, saveDesktopSidebarFontSize } from './settings.ts'
+import type { DesktopSidebarFontSize } from './sidebar-font-size.ts'
 import { readDesktopLocaleCache, writeDesktopLocaleCache } from './locale-cache.ts'
+
 import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { DesktopBrowserGuests } from './browser-guests.ts'
@@ -268,11 +270,13 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
     minWidth: 520,
     minHeight: 600,
     show,
-    ...(process.platform === 'win32' && primary ? {
-      backgroundColor: chromeFallbackFill(),
+    ...((process.platform === 'win32' || process.platform === 'linux') && primary ? {
+      ...(process.platform === 'win32' ? { backgroundColor: chromeFallbackFill() } : {}),
       titleBarStyle: 'hidden' as const,
-      titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT, color: chromeFallbackFill(),
-        symbolColor: nativeTheme.shouldUseDarkColors ? '#f9fafb' : '#0f1115' },
+      // Linux must hide the default frame for Electron to collect HTML drag regions.
+      ...(process.platform === 'win32' ? { titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT,
+        color: chromeFallbackFill(), symbolColor: nativeTheme.shouldUseDarkColors ? '#f9fafb' : '#0f1115',
+      } } : {}),
     } : {}),
     // hiddenInset places traffic lights inside the sidebar; sidebar vibrancy
     // needs a transparent window background to show through the page.
@@ -300,7 +304,7 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
     if (['http:', 'https:'].includes(new URL(url).protocol)) void shell.openExternal(url)
     return { action: 'deny' }
   })
-  if (process.platform === 'darwin' || process.platform === 'win32') {
+  if (process.platform === 'darwin' || process.platform === 'win32' || process.platform === 'linux') {
     // Fullscreen hides native window controls; overlays drop their caption clearance.
     const sendFullscreen = (): void => {
       if (!window.isDestroyed()) window.webContents.send(DESKTOP_IPC.windowFullscreen, window.isFullScreen())
@@ -381,6 +385,8 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
 
 async function main(): Promise<void> {
   const desktopSettings = await readDesktopSettings(app.getPath('userData'))
+  let sidebarFontSize = desktopSettings.sidebarFontSize
+  let savingSidebarFontSize = false
   void pruneCrashReports(app.getPath('logs'))
   const journalDirectory = process.env.DSH_DESKTOP_UPDATE_JOURNAL_DIR
   const updateJournal = journalDirectory === undefined ? undefined : new DesktopUpdateJournal(journalDirectory, app.getVersion())
@@ -516,6 +522,20 @@ async function main(): Promise<void> {
       throw new Error('dsh desktop: rejected IPC from an unowned renderer')
     }
     return mainWindow
+  }
+  if (process.platform === 'linux') {
+    ipcMain.handle(DESKTOP_IPC.windowCommand, (event, action: unknown) => {
+      const window = assertProductSender(event)
+      switch (action) {
+        case 'minimize': window.minimize(); break
+        case 'toggle-maximize':
+          if (window.isMaximized()) window.unmaximize()
+          else window.maximize()
+          break
+        case 'close': window.close(); break
+        default: throw new Error('dsh desktop: invalid window operation')
+      }
+    })
   }
   let navigation: { window: BrowserWindow; url: string; promise: Promise<void> } | undefined
   const navigateMain = (url: string): Promise<void> => {
@@ -1248,6 +1268,29 @@ async function main(): Promise<void> {
     tray?.relabel()
   }
   refreshApplicationMenu()
+  const changeSidebarFontSize = async (size: DesktopSidebarFontSize): Promise<void> => {
+    if (savingSidebarFontSize || size === sidebarFontSize || quitting || shellInstallerOwnsQuit || sessionEnding) return
+    savingSidebarFontSize = true
+    try {
+      tray?.relabel()
+      const result = await saveDesktopSidebarFontSize(app.getPath('userData'), size)
+      if (result.status === 'failed') {
+        console.warn('desktop sidebar font: settings could not be saved', result.error)
+        const { messages } = currentDesktopLocale()
+        dialog.showErrorBox(messages.traySettings, formatDesktopMessage(messages.sidebarTextSaveFailed, {
+          path: join(app.getPath('userData'), 'desktop', 'settings.json'),
+        }))
+        return
+      }
+      sidebarFontSize = size
+      if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(DESKTOP_IPC.sidebarFontSize, size)
+      }
+    } finally {
+      savingSidebarFontSize = false
+      tray?.relabel()
+    }
+  }
   const trayIconPath = process.platform === 'linux' ? applicationIconPath
     : development ? join(app.getAppPath(), 'resources', 'tray-windows.ico') : join(process.resourcesPath, 'tray.ico')
   if (process.platform === 'win32' || process.platform === 'linux') {
@@ -1265,6 +1308,14 @@ async function main(): Promise<void> {
           if (quitting || shellInstallerOwnsQuit || sessionEnding) return
           quitAction ??= 'restart'
           app.quit()
+        }, sidebarFont: {
+          size: () => sidebarFontSize, saving: () => savingSidebarFontSize,
+          change: (size: DesktopSidebarFontSize) => {
+            void changeSidebarFontSize(size).catch((error: unknown) => {
+              // The save result owns storage failures; native menu or error-dialog failures remain diagnostic.
+              console.warn('desktop sidebar font: native UI unavailable', error)
+            })
+          },
         } } : {},
         open: () => { focusPrimaryWindow() }, quit: () => { app.quit() } })
     } catch (error) { console.warn('desktop tray: unavailable', error) }
@@ -1343,6 +1394,17 @@ async function main(): Promise<void> {
   const createMainWindow = (): BrowserWindow => {
     const window = createWindow(appPreload, false, true)
     mainWindow = window
+    if (process.platform === 'linux') {
+      const sendMaximized = (): void => {
+        if (!window.isDestroyed()) window.webContents.send(DESKTOP_IPC.windowMaximized, window.isMaximized())
+      }
+      window.on('maximize', sendMaximized)
+      window.on('unmaximize', sendMaximized)
+      window.webContents.on('did-finish-load', sendMaximized)
+      window.webContents.on('did-finish-load', () => {
+        if (!window.isDestroyed()) window.webContents.send(DESKTOP_IPC.sidebarFontSize, sidebarFontSize)
+      })
+    }
     browserGuests.bind(window, (guest, name) => shortcuts.attachGuest(window, guest, name))
     shortcuts.attach(window)
     window.on('focus', automaticCheck)

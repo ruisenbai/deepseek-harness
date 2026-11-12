@@ -19,11 +19,11 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { packageFiles, packageStylesheets, parseRules, type CssRule } from './stylesheet-scan.ts'
 
-/** The one stylesheet allowed to declare a darwin window drag region, relative to packages/. */
+/** The stylesheet declaring macOS/Linux row drag regions, relative to packages/. */
 const SHELL_SHEET = 'client/web/src/base.css'
 
 /** The mark that stylesheet's rule selects, as authored. */
-const SHELL_DRAG_SELECTOR = "html[data-platform='darwin'] [data-window-drag]"
+const SHELL_DRAG_SELECTOR = "html:is([data-platform='darwin'], [data-platform='linux']) [data-window-drag]"
 
 /** The frame's Windows caption row, relative to packages/; the other platform's chrome. */
 const WINDOWS_CAPTION = 'client/ui-layout/src/client/AppFrame.module.css'
@@ -95,7 +95,7 @@ const CHROME_ROWS: readonly ChromeRow[] = [
     selector: '.tabStrip',
     markup: 'client/ui-dockkit/src/components/TabPanel.tsx',
     height: ['height', '28px'],
-    inset: ['padding', '10px 6px 0 var(--dsh-dockkit-strip-inline-start, 10px)'],
+    inset: ['padding', '10px var(--dsh-dockkit-strip-inline-end, 6px) 0 var(--dsh-dockkit-strip-inline-start, 10px)'],
   },
   {
     file: PLUGIN_MANAGER,
@@ -240,9 +240,9 @@ describe('window drag-region ownership', () => {
 
   it('declares the window drag surface in exactly two places', () => {
     // Rows mark themselves instead of each sheet declaring its own drag, so the
-    // tree holds one darwin rule — the mark rule in the shell sheet — plus the
+    // tree holds one macOS/Linux rule — the mark rule in the shell sheet — plus the
     // Windows caption row, which is that platform's own chrome. A third
-    // declaration, a per-sheet row rule, or a darwin band on the frame fails here.
+    // declaration, a per-sheet row rule, or another band on the frame fails here.
     expect(dragOwners()).toEqual([
       { file: WINDOWS_CAPTION, selectors: [WINDOWS_CAPTION_SELECTOR] },
       { file: SHELL_SHEET, selectors: [SHELL_DRAG_SELECTOR] },

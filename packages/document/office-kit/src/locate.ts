@@ -1,5 +1,5 @@
 /** Locate LibreOffice Kit and its engine packages from the consumer's Kit installation without module hooks. */
-import { lstatSync } from 'node:fs'
+import { lstatSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 
@@ -49,8 +49,9 @@ export function resolveKitModule(lookupKitEntry: KitEntryLookup): KitModuleResol
  * WASM and paths outside archives stay unchanged. Kit validates the returned manifest and required engine assets.
  * @throws Node's error if `kitEntry` cannot be used by `createRequire`.
  * On invocation, the callback preserves Node errors for absent packages and other resolution failures.
- * An installed package with an unresolvable manifest throws an incomplete-installation Error with the Node error as its cause,
- * preventing engine fallback. Filesystem inspection errors propagate unchanged.
+ * A declared engine package with an unresolvable manifest throws an incomplete-installation Error with the Node error as its cause,
+ * preventing engine fallback. An undeclared native engine may be absent so Kit can use WASM.
+ * Filesystem inspection errors propagate unchanged.
  */
 export function createEnginePackageResolver(kitEntry: string | URL): EnginePackageResolver {
   const fromKit = createRequire(kitEntry)
@@ -60,10 +61,14 @@ export function createEnginePackageResolver(kitEntry: string | URL): EnginePacka
       manifest = fromKit.resolve(`${name}/package.json`)
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'MODULE_NOT_FOUND') {
-        const installed = (fromKit.resolve.paths(name) ?? []).some(directory =>
+        const kitManifest: unknown = JSON.parse(readFileSync(fromKit.resolve('@deepseek-ai/libreoffice-kit/package.json'), 'utf8'))
+        const declared = kitManifest !== null && typeof kitManifest === 'object'
+          && 'optionalDependencies' in kitManifest
+          && kitManifest.optionalDependencies !== null && typeof kitManifest.optionalDependencies === 'object'
+          && Object.hasOwn(kitManifest.optionalDependencies, name)
+        if (declared && (fromKit.resolve.paths(name) ?? []).some(directory =>
           lstatSync(join(directory, name), { throwIfNoEntry: false }) !== undefined,
-        )
-        if (installed) throw new Error(`Installed LibreOfficeKit package is incomplete: ${name}. Reinstall the package.`, { cause: error })
+        )) throw new Error(`Installed LibreOfficeKit package is incomplete: ${name}. Reinstall the package.`, { cause: error })
       }
       throw error
     }

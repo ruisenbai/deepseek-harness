@@ -64,6 +64,7 @@ import { conversationUpdates, createModels, getSupportedThinkingLevels } from '.
 import { toStreamChunks } from './stream.ts'
 import { bindThinkingToPrefix } from './prefix-binding.ts'
 import type { PrefixDigests } from './prefix-binding.ts'
+import { withoutResponsesReasoning, withoutResponsesReplayPayload } from './responses-replay.ts'
 import type { PiAiRequestHeaderContext } from './types.ts'
 
 /**
@@ -472,8 +473,16 @@ export class PiAiAdapter extends LlmAdapter {
       const { context, digest } = bindThinkingToPrefix(converted, model.api, prefixDigests, manualThinking, (count) => {
         this.config.onThinkingOmitted?.({ provider: options.provider, model: options.model, count })
       })
-      const events = snapshot.models.streamSimple(model, context, {
+      // A gateway that cannot verify its own encrypted reasoning refuses the
+      // whole turn, so such a route resends the conversation without it. The
+      // two projections cover both paths: the converted history keeps pi-ai
+      // from minting a reasoning item, and the payload hook removes whatever
+      // the serializer would still add.
+      const omitResponsesReplay = model.api === 'openai-responses' && !profile.replayEncryptedReasoning
+      const requestContext = omitResponsesReplay ? withoutResponsesReasoning(context) : context
+      const events = snapshot.models.streamSimple(model, requestContext, {
         ...profileOptions(profile, reasoning, apiKey),
+        ...omitResponsesReplay ? { onPayload: withoutResponsesReplayPayload } : {},
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },

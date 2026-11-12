@@ -4,7 +4,7 @@ import * as fsp from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
-import { readDesktopSettings } from '../src/settings.ts'
+import { readDesktopSettings, saveDesktopSidebarFontSize } from '../src/settings.ts'
 
 vi.mock('node:fs/promises', async importOriginal => ({ ...await importOriginal<typeof import('node:fs/promises')>() }))
 
@@ -23,7 +23,7 @@ it('creates a discoverable default file on first launch without touching other p
   const { userData, path } = fixture()
   rmSync(join(userData, 'desktop'), { recursive: true })
   writeFileSync(join(userData, 'keybindings.json'), 'existing shortcuts\n')
-  expect(await readDesktopSettings(userData)).toEqual({ updates: { allowTestAuthPopupWindow: false } })
+  expect(await readDesktopSettings(userData)).toEqual({ sidebarFontSize: 16, updates: { allowTestAuthPopupWindow: false } })
   expect(readFileSync(path, 'utf8')).toBe('{\n  "updates": {\n    "allowTestAuthPopupWindow": false\n  }\n}\n')
   expect(readFileSync(join(userData, 'keybindings.json'), 'utf8')).toBe('existing shortcuts\n')
 })
@@ -81,4 +81,33 @@ it('continues with defaults even when warning output fails', async () => {
   vi.mocked(console.warn).mockImplementation(() => { throw new Error('output unavailable') })
   expect((await readDesktopSettings(userData)).updates.allowTestAuthPopupWindow).toBe(false)
   expect(readFileSync(path, 'utf8')).toBe('{')
+})
+
+
+it.each([14, 15, 16, 17, 18, 19, 20] as const)('persists and restores the tray sidebar size %ipx without changing update settings', async (size) => {
+  const { userData, path } = fixture()
+  writeFileSync(path, '{"custom":3,"updates":{"allowTestAuthPopupWindow":true,"channel":"nightly"}}')
+  expect(await saveDesktopSidebarFontSize(userData, size)).toEqual({ status: 'saved' })
+  expect(await readDesktopSettings(userData)).toEqual({ sidebarFontSize: size, updates: { allowTestAuthPopupWindow: true } })
+  expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+    custom: 3, sidebarFontSize: size, updates: { allowTestAuthPopupWindow: true, channel: 'nightly' },
+  })
+})
+
+it.each([null, '16', 13, 21, 16.5])('defaults an invalid sidebar size independently from popup settings: %s', async (size) => {
+  const { userData, path } = fixture()
+  const raw = JSON.stringify({ sidebarFontSize: size, updates: { allowTestAuthPopupWindow: true } })
+  writeFileSync(path, raw)
+  expect(await readDesktopSettings(userData)).toEqual({ sidebarFontSize: 16, updates: { allowTestAuthPopupWindow: true } })
+  expect(console.warn).toHaveBeenCalledWith(expect.stringContaining(path), expect.any(Error))
+  expect(readFileSync(path, 'utf8')).toBe(raw)
+})
+
+it('reports a failed tray save without replacing malformed user settings', async () => {
+  const { userData, path } = fixture()
+  writeFileSync(path, '{broken')
+  const result = await saveDesktopSidebarFontSize(userData, 17)
+  expect(result.status).toBe('failed')
+  expect(result).toHaveProperty('error', expect.any(Error))
+  expect(readFileSync(path, 'utf8')).toBe('{broken')
 })

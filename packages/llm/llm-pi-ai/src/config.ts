@@ -165,6 +165,16 @@ export interface PiAiProviderProfile {
   headers?: Record<string, string>
   /** Provider-neutral pi-ai reasoning level. */
   reasoning?: ModelThinkingLevel
+  /**
+   * Whether an `openai-responses` route resends the reasoning its own earlier
+   * turns produced. The default keeps pi-ai's native replay, which a first-party
+   * endpoint requires for continuity. A gateway that returns
+   * `invalid_encrypted_content` for its own replayed ciphertext cannot verify
+   * what it minted, and no request can make it accept the blob again: `false`
+   * sends the same conversation without the replayed reasoning items. Routes on
+   * other protocols ignore this field, which keeps a shared route editable.
+   */
+  replayEncryptedReasoning?: boolean
   /** Token budgets used by reasoning providers that support them. */
   thinkingBudgets?: ThinkingBudgets
   /** Prompt-cache retention preference. */
@@ -228,6 +238,8 @@ export interface ResolvedPiAiProviderProfile
   requestImagePixelBudget: number
   /** Positive raw request-version byte target after defaulting; the smallest quality-ladder output is used when no quality fits. */
   requestImageMaxBytes: number
+  /** Whether this route resends its own earlier reasoning, after defaulting. */
+  replayEncryptedReasoning: boolean
   /** Immutable retry policy captured with this provider route. */
   retryPolicy: ResolvedRetryPolicy
   /**
@@ -365,6 +377,7 @@ const profile = z.object({
   defaultInput: z.array(z.union(MODALITIES)).default([...DEFAULT_INPUT]),
   headers: z.dict(z.string()),
   reasoning: z.union(THINKING_LEVELS),
+  replayEncryptedReasoning: z.boolean().default(true),
   thinkingBudgets,
   cacheRetention: z.union(['none', 'short', 'long']),
   transport: z.union(['sse', 'websocket', 'websocket-cached', 'auto']),
@@ -538,6 +551,7 @@ export function resolveProfiles(
       imageOffloadCountQuantum,
       requestImagePixelBudget,
       requestImageMaxBytes,
+      replayEncryptedReasoning: source.replayEncryptedReasoning ?? true,
       retryPolicy: resolveRetryPolicy(retryPolicy, `llm-pi-ai: provider "${provider}" retryPolicy`),
       ...rest.headers === undefined ? {} : { headers: { ...rest.headers } },
       ...rest.thinkingBudgets === undefined ? {} : { thinkingBudgets: { ...rest.thinkingBudgets } },

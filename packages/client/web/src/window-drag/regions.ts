@@ -1,5 +1,5 @@
 /**
- * The window drag-region contract for the macOS desktop shell: Electron hands
+ * The window drag-region contract for the macOS and Linux desktop shell: Electron hands
  * the page's `-webkit-app-region` boxes to the native window, which hit-tests
  * them by geometry in DOM order, ignoring stacking and overflow clipping.
  * The shipped Electron runtime inherits the property; base.css resets it on each
@@ -35,7 +35,7 @@ export interface RegionRect {
 
 /**
  * The attribute a chrome row puts on the element that owns its window drag.
- * ui-web `base.css` turns the mark into the one darwin drag rule, so the row's
+ * ui-web `base.css` turns the mark into the shared macOS/Linux drag rule, so the row's
  * own box is the window's draggable geometry.
  */
 export const DRAG_MARK = 'data-window-drag'
@@ -52,7 +52,7 @@ export const RECALL_MARK = 'data-window-drag-recall'
  * The interactive-element selector that subtracts controls inside marked drag
  * rows or explicit controls scopes. Interactive viewports without nested drag
  * rows own their whole box instead of their clipped controls. ui-web `base.css`
- * scopes this on darwin; this constant is the source that sheet and its contract
+ * scopes this on macOS and Linux; this constant is the source that sheet and its contract
  * spec compare against.
  */
 export const INTERACTIVE_SELECTOR = [

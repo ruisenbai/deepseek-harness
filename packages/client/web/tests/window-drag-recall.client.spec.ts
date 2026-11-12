@@ -109,9 +109,14 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('window drag watcher installation', () => {
-  it('installs nothing outside the darwin platform', async () => {
-    delete document.documentElement.dataset.platform
+describe.each(['darwin', 'linux'])('window drag watcher installation on %s', (platform) => {
+  beforeEach(() => {
+    document.documentElement.dataset.platform = platform
+  })
+
+  it.each([undefined, 'win32'])('installs nothing on a %s document', async (unsupported) => {
+    if (unsupported === undefined) delete document.documentElement.dataset.platform
+    else document.documentElement.dataset.platform = unsupported
     const seams = harness()
     const stop = installWindowDragRecall({
       document, scheduleFrame: seams.scheduleFrame, watchBox: seams.watchBox,

@@ -251,6 +251,24 @@ describe('AppFrame', () => {
     }
   })
 
+  it('publishes Linux column widths without adding a caption row or removing the ordinary rail', () => {
+    document.documentElement.setAttribute('data-linux-titlebar', '')
+    try {
+      const { frame, instance } = mountFrame()
+      expect(frame.querySelector('[data-linux-titlebar-drag]')).toBeNull()
+      expect(frame.style.getPropertyValue('--dsh-linux-sidebar-track')).toBe(`${tracks(frame)[0]}px`)
+      expect(frame.style.getPropertyValue('--dsh-linux-sidebar-width')).toBe(`${tracks(frame)[0]}px`)
+      expect(frame.style.getPropertyValue('--dsh-linux-rightbar-track')).toBe('0px')
+      act(() => { instance.actions.toggleSidebar() })
+      expect(tracks(frame)[0]).toBe(56)
+      expect(frame.style.getPropertyValue('--dsh-linux-sidebar-track')).toBe('56px')
+      resize(520)
+      expect(frame.hasAttribute('data-sidebar-drawer')).toBe(true)
+      expect(frame.style.getPropertyValue('--dsh-linux-sidebar-track')).toBe('0px')
+      expect(Number.parseFloat(frame.style.getPropertyValue('--dsh-linux-sidebar-width'))).toBeGreaterThan(0)
+    } finally { document.documentElement.removeAttribute('data-linux-titlebar') }
+  })
+
   it('keeps the closed sidebar mounted at its 56px rail without a handle', () => {
     const { frame, instance, sidebarOwner, getByTestId, queryByTestId } = mountFrame()
     act(() => { instance.actions.toggleSidebar() })

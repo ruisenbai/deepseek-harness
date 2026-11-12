@@ -3,12 +3,14 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { z } from 'zod'
+import { isDesktopSidebarFontSize, type DesktopSidebarFontSize } from './sidebar-font-size.ts'
 
 const preferencesSchema = z.object({
   allowTestAuthPopupWindow: z.boolean(),
   channel: z.enum(['nightly', 'stable']),
 })
 const documentSchema = z.looseObject({ updates: z.looseObject({}).optional() })
+const sidebarFontSizeSchema = z.custom<DesktopSidebarFontSize>(isDesktopSidebarFontSize)
 
 /** Known field values before consumers supply defaults for absent fields. */
 export type DesktopUpdatePreferences = z.infer<typeof preferencesSchema>
@@ -18,7 +20,7 @@ export type DesktopSettingsDocument = z.infer<typeof documentSchema>
 export type DesktopSettingsProblem =
   | { kind: 'read' }
   | { kind: 'invalid'; reason: 'json' | 'structure' }
-  | { kind: 'invalid'; reason: 'field'; field: keyof DesktopUpdatePreferences }
+  | { kind: 'invalid'; reason: 'field'; field: keyof DesktopUpdatePreferences | 'sidebarFontSize' }
   | { kind: 'write'; operation: 'initialize' | 'save'; effect: 'unchanged' | 'unknown' | 'written' }
 
 /** A storage or validation failure; business consumers decide fallback or suspension. */
@@ -46,10 +48,11 @@ export type DesktopSettingsRead =
   | {
     kind: 'ready'
     document: DesktopSettingsDocument
+    sidebarFontSize: DesktopSettingsField<DesktopSidebarFontSize>
     fields: { [K in keyof DesktopUpdatePreferences]: DesktopSettingsField<DesktopUpdatePreferences[K]> }
   }
 
-function field<T>(schema: z.ZodType<T>, value: unknown, name: keyof DesktopUpdatePreferences, path: string): DesktopSettingsField<T> {
+function field<T>(schema: z.ZodType<T>, value: unknown, name: keyof DesktopUpdatePreferences | 'sidebarFontSize', path: string): DesktopSettingsField<T> {
   if (value === undefined) return { kind: 'absent' }
   const result = schema.safeParse(value)
   return result.success ? { kind: 'valid', value: result.data }
@@ -100,11 +103,12 @@ export class DesktopSettingsFile {
     const result = documentSchema.safeParse(value)
     if (!result.success) return { kind: 'error', error: new DesktopSettingsFileError({ kind: 'invalid', reason: 'structure' }, this.path) }
     const document = result.data
-    return { kind: 'ready', document, fields: {
-      allowTestAuthPopupWindow: field(preferencesSchema.shape.allowTestAuthPopupWindow,
-        document.updates?.allowTestAuthPopupWindow, 'allowTestAuthPopupWindow', this.path),
-      channel: field(preferencesSchema.shape.channel, document.updates?.channel, 'channel', this.path),
-    } }
+    return { kind: 'ready', document,
+      sidebarFontSize: field(sidebarFontSizeSchema, document.sidebarFontSize, 'sidebarFontSize', this.path), fields: {
+        allowTestAuthPopupWindow: field(preferencesSchema.shape.allowTestAuthPopupWindow,
+          document.updates?.allowTestAuthPopupWindow, 'allowTestAuthPopupWindow', this.path),
+        channel: field(preferencesSchema.shape.channel, document.updates?.channel, 'channel', this.path),
+      } }
   }
 
   /**
@@ -133,7 +137,19 @@ export class DesktopSettingsFile {
     if (result.kind === 'error') throw result.error
   }
 
-  private async mutate(request: { kind: 'initialize' } | { kind: 'save'; updates: Partial<DesktopUpdatePreferences> }): Promise<DesktopSettingsRead> {
+  /**
+   * Save sidebar text size under the same writer lock as update preferences.
+   * @param size - Supported pixel size, preserving every unrelated field.
+   * @returns After atomic replacement and lock release; otherwise throws DesktopSettingsFileError.
+   */
+  async saveSidebarFontSize(size: DesktopSidebarFontSize): Promise<void> {
+    const result = await this.mutate({ kind: 'save', sidebarFontSize: size })
+    if (result.kind === 'error') throw result.error
+  }
+
+  private async mutate(request: { kind: 'initialize' }
+    | { kind: 'save'; updates: Partial<DesktopUpdatePreferences> }
+    | { kind: 'save'; sidebarFontSize: DesktopSidebarFontSize }): Promise<DesktopSettingsRead> {
     let effect: 'unchanged' | 'unknown' | 'written' = 'unchanged'
     try {
       await mkdir(dirname(this.path), { recursive: true, mode: 0o700 })
@@ -142,8 +158,10 @@ export class DesktopSettingsFile {
         if (current.kind === 'error') throw current.error
         if (request.kind === 'initialize' && current.kind !== 'missing') return current
         const document = current.kind === 'ready' ? current.document : {}
-        const updates = request.kind === 'initialize' ? { allowTestAuthPopupWindow: false } : request.updates
-        const next = { ...document, updates: { ...document.updates, ...updates } }
+        const next = request.kind === 'save' && 'sidebarFontSize' in request
+          ? { ...document, sidebarFontSize: request.sidebarFontSize }
+          : { ...document, updates: { ...document.updates,
+            ...(request.kind === 'initialize' ? { allowTestAuthPopupWindow: false } : request.updates) } }
         const raw = `${JSON.stringify(next, null, 2)}\n`
         effect = 'unknown'
         if (request.kind === 'initialize') {

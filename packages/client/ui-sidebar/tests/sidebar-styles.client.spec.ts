@@ -31,11 +31,11 @@ describe('SidebarRoot.module.css', () => {
     expect(declarations('.collapsed .panelList')?.get('gap')).toBe('12px')
   })
 
-  it('fits expanded navigation into 32px rows while retaining 36px rail controls', () => {
+  it('grows expanded navigation with sidebar text while retaining 36px rail controls', () => {
     const row = declarations('.panelRow')
     expect(row?.get('min-height')).toBe('32px')
     expect(row?.get('padding')).toBe('5px calc(var(--dsh-sidebar-row-padding) - var(--dsh-sidebar-paint-inset))')
-    expect(row?.get('line-height')).toBe('22px')
+    expect(row?.get('line-height')).toBe('var(--dsh-sidebar-line-height, var(--dsw-font-base-16-line-height))')
     expect(row?.get('box-sizing')).toBe('border-box')
     expect(row?.get('border')).toBe('none')
     expect(declarations('.collapsed .panelRow')?.get('width')).toBe('36px')

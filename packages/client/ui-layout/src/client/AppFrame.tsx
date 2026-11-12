@@ -169,6 +169,7 @@ export function AppFrame({
 
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
   const windowsTitlebar = document.documentElement.hasAttribute('data-windows-titlebar')
+  const linuxTitlebar = document.documentElement.hasAttribute('data-linux-titlebar')
   const drawer = viewport < SIDEBAR_DRAWER_BREAKPOINT && !windowsTitlebar
   const centeredSidebar = foldedLandscape && viewport >= SIDEBAR_DRAWER_BREAKPOINT
   const sidebarCollapsed = narrow ? !layoutInfo.narrowExpanded : layoutInfo.sidebar === 0
@@ -292,6 +293,11 @@ export function AppFrame({
       style={{
         ...(windowsTitlebar
           ? { '--dsh-windows-sidebar-width': `${cols.sidebar}px` } : {}),
+        ...(linuxTitlebar ? {
+          '--dsh-linux-sidebar-track': `${cols.sidebar}px`,
+          '--dsh-linux-sidebar-width': `${sidebarWidth}px`,
+          '--dsh-linux-rightbar-track': `${cols.rightbar}px`,
+        } : {}),
         gridTemplateColumns:
           `${cols.sidebar}px minmax(${cols.rightbar === 0 ? 0 : CENTER_MIN}px, 1fr) minmax(0px, ${rightbarMax}px)`,
       }}

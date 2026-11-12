@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { installMandatoryUpdateOverlay } from '../src/preload-mandatory-overlay.ts'
 import { syncWindowsAppearance } from '../src/preload-windows.ts'
+import { syncSidebarFontSize } from '../src/preload-sidebar-font.ts'
 import { DESKTOP_IPC, type DshDesktopProductApi } from '../src/ipc.ts'
 
 const electron = vi.hoisted(() => ({
@@ -14,11 +15,26 @@ const electron = vi.hoisted(() => ({
 vi.mock('electron', () => electron)
 vi.mock('../src/preload-platform.ts', () => ({ markDocumentPlatform: vi.fn(), syncWindowFullscreen: vi.fn() }))
 vi.mock('../src/preload-theme.ts', () => ({ syncNativeTheme: vi.fn() }))
+vi.mock('../src/preload-sidebar-font.ts', () => ({ syncSidebarFontSize: vi.fn() }))
 vi.mock('../src/preload-windows.ts', () => ({ syncWindowsAppearance: vi.fn() }))
 vi.mock('../src/preload-mandatory-overlay.ts', () => ({ installMandatoryUpdateOverlay: vi.fn() }))
 
 beforeEach(() => { vi.stubGlobal('process', { ...process, isMainFrame: true }) })
 afterEach(() => { document.body.replaceChildren(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.clearAllMocks(); vi.resetModules() })
+
+it('installs sidebar font synchronization only for the application main frame', async () => {
+  for (const [url, isMainFrame, expected] of [
+    ['dsh-app://app/', true, true], ['dsh-app://app/', false, false],
+    ['dsh-app://shell/startup.html', true, false], ['https://example.com/', true, false],
+  ] as const) {
+    vi.resetModules()
+    vi.mocked(syncSidebarFontSize).mockClear()
+    vi.stubGlobal('location', new URL(url))
+    vi.stubGlobal('process', { ...process, isMainFrame })
+    await import('../src/preload-app.ts')
+    expect(syncSidebarFontSize).toHaveBeenCalledTimes(expected ? 1 : 0)
+  }
+})
 
 it('reads only native login API-key presence through the onboarding bridge', async () => {
   vi.stubGlobal('location', new URL('dsh-app://app/'))

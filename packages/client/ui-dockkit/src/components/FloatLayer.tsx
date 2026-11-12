@@ -78,12 +78,16 @@ function raised(state: LayoutState, paneId: PaneId): boolean {
  */
 function floatBounds(): FloatBounds {
   const root = document.documentElement
-  const windows = root.hasAttribute('data-windows-titlebar')
+  const captionProperty = root.hasAttribute('data-linux-titlebar') ? '--dsh-linux-titlebar-height'
+    : root.hasAttribute('data-windows-titlebar') ? '--dsh-windows-titlebar-height' : undefined
   // Desktop publishes the caption height in pixels on the root's inline style;
   // a root without it keeps the 20px floor.
-  const caption = windows && !root.hasAttribute('data-fullscreen')
-    ? Number.parseFloat(root.style.getPropertyValue('--dsh-windows-titlebar-height')) : 0
-  return { top: windows ? (Number.isFinite(caption) ? caption : 0) + 20 : 0, width: window.innerWidth, height: window.innerHeight }
+  const caption = captionProperty !== undefined && !root.hasAttribute('data-fullscreen')
+    ? Number.parseFloat(root.style.getPropertyValue(captionProperty)) : 0
+  return {
+    top: captionProperty === undefined ? 0 : (Number.isFinite(caption) ? caption : 0) + 20,
+    width: window.innerWidth, height: window.innerHeight,
+  }
 }
 
 /** Whether the platform asks for reduced motion; environments without `matchMedia` (jsdom) report no preference. */

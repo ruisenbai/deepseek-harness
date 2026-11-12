@@ -16,8 +16,8 @@
   display: block;
   padding: 8px 10px;
   color: var(--dsw-alias-label-primary);
-  font-size: 14px;
-  line-height: 20px;
+  font-size: calc(var(--dsh-content-font-size, 14px) - 1px);
+  line-height: calc(var(--dsh-content-font-size, 14px) + 6px);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }

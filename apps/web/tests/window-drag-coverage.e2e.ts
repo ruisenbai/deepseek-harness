@@ -27,7 +27,7 @@ import {
 } from '@deepseek-ai/dsh-client-web/src/window-drag/regions.ts'
 import { launchWebScaffold, watchConsole, type WebScaffold } from './scaffold.ts'
 import {
-  collectWindowSurface, connectFreshWorkspace, expandOwningTurnProcess, newEnglishPage, saveFailureShot,
+  collectWindowSurface, connectFreshWorkspace, expandOwningTurnProcess, newEnglishPage, openSettings, saveFailureShot,
   type CollectedWindowSurface,
 } from './support.ts'
 
@@ -188,12 +188,25 @@ describe('web e2e: macOS window drag coverage', () => {
    * @returns the page and its console tripwire.
    */
   async function desktopPage(
-    platform: 'darwin' | 'win32' = 'darwin', host: WebScaffold = scaffold,
+    platform: 'darwin' | 'win32' | 'linux' = 'darwin', host: WebScaffold = scaffold,
   ): Promise<{ page: Page; tripwire: ReturnType<typeof watchConsole> }> {
     const page = await newEnglishPage(browser)
     await page.addInitScript(({ value, snapshot }) => {
       // The Desktop platform marker requires the preload's keyboard and preference capabilities.
+      let maximized = false
+      const windowListeners = new Set<() => void>()
       Object.assign(window, { dshDesktop: { protocolVersion: 1,
+        ...(value === 'linux' ? { windowControls: {
+          isMaximized: () => maximized,
+          subscribe: (listener: () => void) => { windowListeners.add(listener); return () => { windowListeners.delete(listener) } },
+          command: async (action: string) => {
+            document.documentElement.dataset.testWindowAction = action
+            if (action === 'toggle-maximize') {
+              maximized = !maximized
+              for (const listener of windowListeners) listener()
+            }
+          },
+        } } : {}),
         keyboard: { subscribe: () => () => {}, closeWindow: async () => {} },
         shortcuts: { get: async () => ({ ...snapshot, status: 'ready' }),
           subscribe: () => () => {}, recording: async () => {},
@@ -204,6 +217,12 @@ describe('web e2e: macOS window drag coverage', () => {
         if (value === 'win32') {
           document.documentElement.setAttribute('data-windows-titlebar', '')
           document.documentElement.style.setProperty('--dsh-windows-titlebar-height', '40px')
+        } else if (value === 'linux') {
+          document.documentElement.setAttribute('data-linux-titlebar', '')
+          document.documentElement.style.setProperty('--dsh-linux-titlebar-height', '40px')
+          document.documentElement.style.setProperty('--dsh-linux-controls-start', '0px')
+          document.documentElement.style.setProperty('--dsh-linux-controls-end', '104px')
+          document.documentElement.style.setProperty('--dsh-linux-controls-height', '40px')
         }
       }
       if (document.documentElement === null) document.addEventListener('DOMContentLoaded', mark, { once: true })
@@ -247,6 +266,79 @@ describe('web e2e: macOS window drag coverage', () => {
     await page.locator(`[data-sidebar-right-session="${session.id}"]:not([data-sidebar-right-panel]):not([hidden])`)
       .waitFor({ state: 'attached' })
   }
+
+  it('matches Linux window control hover backgrounds to sidebar buttons across themes and widths', async () => {
+    const { page, tripwire } = await desktopPage('linux')
+    try {
+      const controls = page.locator('[data-linux-window-controls]')
+      await controls.waitFor()
+      for (const dark of [false, true]) {
+        await page.evaluate(value => document.body.toggleAttribute('data-ds-dark-theme', value), dark)
+        await page.setViewportSize({ width: 1280, height: 820 })
+        await settled(page)
+        const sidebarButton = page.getByRole('button', { name: /^(Open sidebar|Collapse sidebar)$/ }).first()
+        await sidebarButton.hover()
+        const sidebarBackground = await sidebarButton.evaluate(button => getComputedStyle(button).backgroundColor)
+        expect(sidebarBackground).not.toBe('rgba(0, 0, 0, 0)')
+        await page.mouse.move(200, 200)
+        for (const width of [1280, 520]) {
+          await page.setViewportSize({ width, height: 820 })
+          await settled(page)
+          const geometry = await controls.locator('button').evaluateAll(buttons => buttons.map((button) => {
+            const box = button.getBoundingClientRect()
+            return { width: box.width, height: box.height, top: box.top, right: box.right,
+              background: getComputedStyle(button).backgroundColor,
+              hit: button.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)) }
+          }))
+          expect(geometry).toHaveLength(3)
+          expect(geometry.every(box => box.width === 28 && box.height === 28 && box.top === 11
+            && box.right <= width - 12 && box.hit && box.background === 'rgba(0, 0, 0, 0)')).toBe(true)
+          expect(swallowedBoxes(await collectedSurface(page, INTERACTIVE_SELECTOR))).toEqual([])
+          for (const button of await controls.getByRole('button').all()) {
+            await button.hover()
+            expect(await button.evaluate(element => getComputedStyle(element).backgroundColor)).toBe(sidebarBackground)
+            await page.mouse.down()
+            expect(await button.evaluate(element => getComputedStyle(element).backgroundColor)).toBe(sidebarBackground)
+            await page.mouse.move(200, 200)
+            await page.mouse.up()
+            expect(await button.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgba(0, 0, 0, 0)')
+          }
+          const close = controls.getByRole('button', { name: 'Close', exact: true })
+          const normalColor = await close.evaluate(button => getComputedStyle(button).color)
+          await close.hover()
+          expect(await close.evaluate(button => getComputedStyle(button).backgroundColor)).toBe(sidebarBackground)
+          expect(await close.evaluate(button => getComputedStyle(button).color)).not.toBe(normalColor)
+          await page.mouse.move(200, 200)
+        }
+      }
+      await controls.getByRole('button', { name: 'Maximize', exact: true }).click()
+      await controls.getByRole('button', { name: 'Restore window', exact: true }).waitFor()
+      await controls.getByRole('button', { name: 'Restore window', exact: true }).click()
+      await controls.getByRole('button', { name: 'Maximize', exact: true }).waitFor()
+      await page.setViewportSize({ width: 1280, height: 820 })
+      await openSettings(page, 'en')
+      await settled(page)
+      expect(swallowedBoxes(await collectedSurface(page, INTERACTIVE_SELECTOR))).toEqual([])
+      await controls.getByRole('button', { name: 'Maximize', exact: true }).click()
+      await controls.getByRole('button', { name: 'Restore window', exact: true }).waitFor()
+      await page.getByRole('dialog', { name: 'Settings', exact: true }).getByRole('button', { name: 'Close', exact: true }).click()
+      await controls.getByRole('button', { name: 'Restore window', exact: true }).focus()
+      await page.keyboard.press('Tab')
+      expect(await controls.getByRole('button', { name: 'Close', exact: true }).evaluate(button => ({
+        focused: document.activeElement === button, outline: getComputedStyle(button).outlineStyle,
+        background: getComputedStyle(button).backgroundColor,
+      }))).toEqual({ focused: true, outline: 'solid', background: 'rgba(0, 0, 0, 0)' })
+      await controls.getByRole('button', { name: 'Minimize', exact: true }).click()
+      expect(await page.locator('html').getAttribute('data-test-window-action')).toBe('minimize')
+      await controls.getByRole('button', { name: 'Close', exact: true }).click()
+      expect(await page.locator('html').getAttribute('data-test-window-action')).toBe('close')
+      await page.evaluate(() => { document.documentElement.dataset.fullscreen = 'true' })
+      expect(await controls.isVisible()).toBe(false)
+      await page.evaluate(() => { delete document.documentElement.dataset.fullscreen })
+      await controls.waitFor()
+      expect(tripwire.pageErrors).toEqual([])
+    } finally { await page.close() }
+  })
 
   it('keeps the header draggable when transcript controls scroll above their clip', async () => {
     const { page, tripwire } = await desktopPage()

@@ -35,6 +35,13 @@
   pointer-events: none;
 }
 
+:global([data-linux-titlebar]) .dragBand {
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--dsh-linux-controls-height, 0px);
+  pointer-events: none;
+}
+
 .onboardingStage {
   display: flex;
   flex: 1;

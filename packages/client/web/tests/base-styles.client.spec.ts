@@ -1,6 +1,6 @@
 /**
  * Shell base styles stay independent from the dynamically loaded theme bundle,
- * and the shell sheet is where the darwin window drag surface is declared.
+ * and the shell sheet declares the macOS/Linux window drag surface.
  */
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -41,7 +41,7 @@ describe('web shell base.css', () => {
 
   it('resets inherited regions on elements while preserving pseudo-element regions', () => {
     expect(normalizedCss).toContain(
-      ":where(html[data-platform='darwin'] *) { -webkit-app-region: initial; }",
+      ":where(html:is([data-platform='darwin'], [data-platform='linux']) *) { -webkit-app-region: initial; }",
     )
     expect(normalizedCss).not.toMatch(/[^{}]*::[^{}]*\{[^{}]*app-region:\s*initial\b/)
   })
@@ -50,21 +50,21 @@ describe('web shell base.css', () => {
     // One source for the selector: the model constant. The darwin rule must
     // declare the same list, so a new interactive role is added in one place
     // and a drift between the sheet and the composition model fails here.
-    const scope = "html[data-platform='darwin'] :where([data-window-drag], [data-window-drag-controls])"
+    const scope = "html:is([data-platform='darwin'], [data-platform='linux']) :where([data-window-drag], [data-window-drag-controls])"
     const rule = /:is\(([^)]*)\):where\(:not\(\[data-window-drag-exclude\] \*\)\)\s*\{[^}]*app-region:\s*no-drag/
       .exec(normalizedCss.split(scope)[1] ?? '')
-    expect(rule, 'base.css declares no darwin interactive no-drag rule').not.toBeNull()
+    expect(rule, 'base.css declares no desktop interactive no-drag rule').not.toBeNull()
     const declared = rule![1]!.split(',').map(part => part.trim()).join(', ')
     expect(declared).toBe(INTERACTIVE_SELECTOR)
   })
 
-  it('declares the darwin drag surface through the mark chrome rows set', () => {
+  it('declares the macOS/Linux drag surface through the mark chrome rows set', () => {
     // One rule for the whole surface: a chrome row marks itself
     // `data-window-drag`, so its own box is the draggable geometry and no sheet
     // has to declare drag per row. The ui-theme app-region gate holds the other
-    // half — that this is the only darwin drag rule in the package tree.
+    // half — that this is the only shared desktop drag rule in the package tree.
     expect(normalizedCss).toContain(
-      "html[data-platform='darwin'] [data-window-drag] { -webkit-app-region: drag; }",
+      "html:is([data-platform='darwin'], [data-platform='linux']) [data-window-drag] { -webkit-app-region: drag; }",
     )
   })
 
@@ -75,7 +75,7 @@ describe('web shell base.css', () => {
     // marks inside it still win in document order, so the pulse changes what
     // Electron collects without changing the composed surface.
     expect(normalizedCss).toContain(
-      "html[data-platform='darwin'] [data-window-drag-recall] { -webkit-app-region: no-drag; }",
+      "html:is([data-platform='darwin'], [data-platform='linux']) [data-window-drag-recall] { -webkit-app-region: no-drag; }",
     )
   })
 

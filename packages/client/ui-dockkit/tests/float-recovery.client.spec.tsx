@@ -426,6 +426,28 @@ describe('the viewport projection', () => {
     expect(h.resizeFloat).toHaveBeenCalledWith(h.paneId, { x: 280, y: 80, width: 220, height: 200 })
   })
 
+  it.each(['windows', 'linux'])('keeps %s floating panels below the caption and releases that space in fullscreen', (platform) => {
+    const root = document.documentElement
+    const attribute = `data-${platform}-titlebar`
+    const property = `--dsh-${platform}-titlebar-height`
+    root.setAttribute(attribute, '')
+    root.style.setProperty(property, '40px')
+    onTestFinished(() => {
+      root.removeAttribute(attribute)
+      root.removeAttribute('data-fullscreen')
+      root.style.removeProperty(property)
+    })
+    const h = mounted({ x: 100, y: 0, width: 300, height: 200 })
+    expect(h.top()).toBe(60)
+    root.setAttribute('data-fullscreen', 'true')
+    act(() => { window.dispatchEvent(new Event('resize')) })
+    expect(h.top()).toBe(20)
+    root.removeAttribute('data-fullscreen')
+    act(() => { window.dispatchEvent(new Event('resize')) })
+    expect(h.top()).toBe(60)
+    expect(h.moveFloat).not.toHaveBeenCalled()
+  })
+
   it('keeps the 20px floor on a Windows root that publishes no caption height', () => {
     document.documentElement.setAttribute('data-windows-titlebar', '')
     onTestFinished(() => { document.documentElement.removeAttribute('data-windows-titlebar') })

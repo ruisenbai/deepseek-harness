@@ -19,13 +19,18 @@ const { createRequire: nodeCreateRequire } = await vi.importActual<typeof import
 
 afterEach(() => { vi.resetAllMocks() })
 
-function engineTree() {
+function engineTree(declareEngine = true) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'dsh-engine-package-')))
   onTestFinished(() => { rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 10 }) })
   const kitDirectory = join(root, 'node_modules', '@deepseek-ai', 'libreoffice-kit')
   const kitSource = join(kitDirectory, 'lib', 'index.js')
+  // The missing-manifest cases represent a declared engine; an undeclared engine may use WASM.
+  const name = `@deepseek-ai/libreoffice-kit-${basename(root)}`
   mkdirSync(dirname(kitSource), { recursive: true })
-  writeFileSync(join(kitDirectory, 'package.json'), JSON.stringify({ main: 'lib/index.js' }))
+  writeFileSync(join(kitDirectory, 'package.json'), JSON.stringify({
+    name: '@deepseek-ai/libreoffice-kit', main: 'lib/index.js',
+    optionalDependencies: declareEngine ? { [name]: '0.1.1' } : { '@deepseek-ai/libreoffice-kit-wasm': '0.2.3' },
+  }))
   writeFileSync(kitSource, '')
   const host = nodeCreateRequire(join(root, 'caller.cjs'))
   const kitEntry = host.resolve('@deepseek-ai/libreoffice-kit')
@@ -37,7 +42,6 @@ function engineTree() {
     return nodeCreateRequire(from)
   })
   // A private name prevents globally installed packages from satisfying an absent fixture.
-  const name = `@deepseek-ai/libreoffice-kit-${basename(root)}`
   const directory = join(kitDirectory, 'node_modules', name)
   return { root, name, directory, resolve, kit, kitEntry, resolveEnginePackage: createEnginePackageResolver(kitEntry) }
 }
@@ -101,6 +105,15 @@ it.each(['missing manifest', 'dangling symlink', 'absent'] as const)(
     }
   },
 )
+
+it('lets an undeclared native engine fall back to WASM even when a directory appears present', () => {
+  const fixture = engineTree(false)
+  mkdirSync(fixture.directory, { recursive: true })
+  const error = thrownBy(() => fixture.resolveEnginePackage(fixture.name))
+  expect(error).toBe(fixture.resolve.mock.results[0]?.value)
+  expect(error).toMatchObject({ code: 'MODULE_NOT_FOUND' })
+  expect(lstatSync).not.toHaveBeenCalled()
+})
 
 it('keeps a Node resolution error other than MODULE_NOT_FOUND unchanged', () => {
   const fixture = engineTree()

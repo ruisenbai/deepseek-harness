@@ -274,6 +274,7 @@
 }
 
 .runningText {
+  --dsh-text-shimmer-duration: 7.5s;
   min-width: 0;
   font-variant-numeric: tabular-nums;
 }

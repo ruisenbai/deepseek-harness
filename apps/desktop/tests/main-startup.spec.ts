@@ -106,6 +106,10 @@ const harness = await vi.hoisted(async () => {
     readonly setAlwaysOnTop = vi.fn()
     readonly restore = vi.fn()
     readonly minimize = vi.fn()
+    maximized = false
+    isMaximized() { return this.maximized }
+    readonly maximize = vi.fn(() => { this.maximized = true; this.emit('maximize') })
+    readonly unmaximize = vi.fn(() => { this.maximized = false; this.emit('unmaximize') })
     readonly setSize = vi.fn()
     readonly getBounds = vi.fn(() => ({ x: 0, y: 0, width: 800, height: 700 }))
     readonly setMinimumSize = vi.fn()
@@ -811,7 +815,7 @@ describe('desktop main startup', () => {
   })
 
   it.each(([
-    ['darwin', 'en'], ['darwin', 'zh-CN'], ['win32', 'en'], ['win32', 'zh-CN'], ['linux', 'en'], ['linux', 'zh-CN'],
+    ['darwin', 'en'], ['darwin', 'zh-CN'], ['win32', 'en'], ['win32', 'zh-CN'],
   ] as const).flatMap(([platform, locale]) => [
     [platform, locale, true] as const, [platform, locale, false] as const,
   ]))('groups localized DevTools before quit on %s (%s, packaged=%s)', async (platform, locale, packaged) => {
@@ -824,7 +828,7 @@ describe('desktop main startup', () => {
     const visible = menu.filter(item => item.visible !== false)
     expect(visible.map(item => item.role === 'quit' ? 'quit' : item.label ?? item.type)).toEqual([
       messages.aboutMenu, 'separator', messages.checkUpdatesMenu,
-      ...platform === 'linux' ? [] : [messages.cliCommandMenu],
+      messages.cliCommandMenu,
       'separator', ...packaged ? [] : [messages.reloadPageMenu, messages.restartAppHostMenu],
       messages.toggleDevToolsMenu, 'separator',
       ...platform === 'darwin' ? [messages.hideApplication, messages.hideOtherApplications, messages.showAllApplications, 'separator'] : [],
@@ -1150,7 +1154,7 @@ describe('desktop main startup', () => {
     }
   })
 
-  it.each(['darwin', 'win32', 'linux'] as const)('limits native titlebar styling to macOS on %s', async (platform) => {
+  it.each(['darwin', 'win32', 'linux'] as const)('uses platform-specific native window chrome on %s', async (platform) => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
     await import('../src/main.ts')
     await harness.preparing.promise
@@ -1166,8 +1170,9 @@ describe('desktop main startup', () => {
         { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
       ])
     } else {
+      expect(window.options).toMatchObject({ titleBarStyle: 'hidden' })
       expect(window.options).not.toHaveProperty('backgroundColor')
-      expect(window.options).not.toHaveProperty('titleBarStyle')
+      expect(window.options).not.toHaveProperty('titleBarOverlay')
       expect(window.options).not.toHaveProperty('vibrancy')
     }
     expect(harness.hosts).toHaveLength(0)
@@ -1249,7 +1254,7 @@ describe('desktop main startup', () => {
     expect((await handler(new Request('dsh-app://foreign/index.html'))).status).toBe(404)
   })
 
-  it.each(['darwin', 'win32'] as const)('relays the %s fullscreen state on transitions and after each load', async (platform) => {
+  it.each(['darwin', 'win32', 'linux'] as const)('relays the %s fullscreen state on transitions and after each load', async (platform) => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
     await import('../src/main.ts')
     await harness.preparing.promise
@@ -1270,16 +1275,6 @@ describe('desktop main startup', () => {
     window.destroyed = true
     window.emit('enter-full-screen')
     expect(sent()).toHaveLength(relayed)
-  })
-
-  it.each(['linux'] as const)('registers no fullscreen relay on %s', async (platform) => {
-    vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
-    await import('../src/main.ts')
-    await harness.preparing.promise
-    const window = harness.windows[0]!
-    window.emit('enter-full-screen')
-    window.webContents.emit('did-finish-load')
-    expect(window.webContents.send.mock.calls.filter(([channel]) => channel === DESKTOP_IPC.windowFullscreen)).toHaveLength(0)
   })
 
   it('covers the macOS vibrancy reattach gap with an opaque base while minimized or hidden', async () => {
@@ -1444,18 +1439,49 @@ describe('desktop main startup', () => {
     expect(harness.menu.setApplicationMenu).toHaveBeenCalledOnce()
   })
 
-  it('keeps the native draggable Linux titlebar without visible application or Edit menus', async () => {
+  it('enables Linux HTML dragging with product window controls and no visible application or Edit menus', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
     await import('../src/main.ts')
     await harness.preparing.promise
     expect(harness.windows[0]!.options).not.toHaveProperty('frame', false)
-    expect(harness.windows[0]!.options).not.toHaveProperty('titleBarStyle')
+    expect(harness.windows[0]!.options).toMatchObject({
+      titleBarStyle: 'hidden',
+    })
     expect(harness.windows[0]!.options).not.toHaveProperty('titleBarOverlay')
     expect(harness.windows[0]!.setMenuBarVisibility).toHaveBeenCalledWith(false)
     const template = harness.menu.buildFromTemplate.mock.calls[0]![0]
     expect(template.filter(item => item.visible !== false)).toEqual([])
     await expect(JSON.stringify(template, null, 2) + '\n').toMatchFileSnapshot('./expected/application-menu-linux.json')
     expect(harness.menu.setApplicationMenu).toHaveBeenCalledOnce()
+  })
+
+  it('operates only the owned Linux window and publishes native maximize changes across reloads', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    const window = harness.windows[0]!
+    const sender = window.webContents
+    const event = { sender, senderFrame: sender.mainFrame }
+    const command = harness.handlers.get(DESKTOP_IPC.windowCommand)!
+    command(event, 'minimize')
+    expect(window.minimize).toHaveBeenCalledOnce()
+    command(event, 'toggle-maximize')
+    expect(window.maximize).toHaveBeenCalledOnce()
+    expect(sender.send).toHaveBeenCalledWith(DESKTOP_IPC.windowMaximized, true)
+    sender.send.mockClear()
+    sender.emit('did-finish-load')
+    expect(sender.send).toHaveBeenCalledWith(DESKTOP_IPC.windowMaximized, true)
+    command(event, 'toggle-maximize')
+    expect(window.unmaximize).toHaveBeenCalledOnce()
+    expect(sender.send).toHaveBeenCalledWith(DESKTOP_IPC.windowMaximized, false)
+    expect(() => command(event, 'quit')).toThrow('invalid window operation')
+    expect(() => command({ sender, senderFrame: { url: 'dsh-app://app/' } }, 'close')).toThrow('unowned renderer')
+    expect(() => command({ sender: {}, senderFrame: sender.mainFrame }, 'close')).toThrow('unowned renderer')
+    expect(() => command({ sender, senderFrame: { url: 'https://example.test/' } }, 'close')).toThrow('unowned renderer')
+    command(event, 'close')
+    expect(window.hide).toHaveBeenCalled()
+    expect(window.isDestroyed()).toBe(false)
+    expect(harness.app.quit).not.toHaveBeenCalled()
   })
 
   it.each(['en-US', 'zh-CN'])('localizes macOS application commands without changing the application name (%s)', async (locale) => {
@@ -1775,6 +1801,72 @@ describe('desktop main startup', () => {
     expect(item?.click).toBeTypeOf('function')
     return (item as { click: () => void }).click
   }
+
+  function linuxFontActions(): MenuItemConstructorOptions[] {
+    const settings = harness.menu.mock.lastCall?.[0].find(item => item.label === en.traySettings)?.submenu
+    if (!Array.isArray(settings)) throw new Error('missing Linux tray settings')
+    const actions = settings[0]?.submenu
+    if (!Array.isArray(actions)) throw new Error('missing Linux sidebar font actions')
+    return actions
+  }
+
+  function clickFontAction(index: number): void {
+    ;(linuxFontActions()[index] as { click: () => void }).click()
+  }
+
+  it('restores the Linux sidebar size after loading and commits tray edits before publishing them', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    const directory = join(harness.app.getPath('userData'), 'desktop')
+    mkdirSync(directory, { recursive: true })
+    const path = join(directory, 'settings.json')
+    writeFileSync(path, JSON.stringify({ sidebarFontSize: 20, updates: { allowTestAuthPopupWindow: true }, custom: 'keep' }))
+    await readyWorkspace()
+    const window = harness.windows[0]!
+    window.webContents.emit('did-finish-load')
+    expect(window.webContents.send).toHaveBeenCalledWith(DESKTOP_IPC.sidebarFontSize, 20)
+    expect(linuxFontActions().map(item => item.enabled)).toEqual([false, true, true])
+    clickFontAction(1)
+    expect(linuxFontActions().every(item => item.enabled === false)).toBe(true)
+    clickFontAction(1)
+    await vi.waitFor(() => {
+      expect(linuxFontActions()[0]?.enabled).toBe(true)
+      expect(window.webContents.send).toHaveBeenCalledWith(DESKTOP_IPC.sidebarFontSize, 19)
+    })
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+      sidebarFontSize: 19, updates: { allowTestAuthPopupWindow: true }, custom: 'keep',
+    })
+    window.close()
+    window.show.mockClear()
+    clickFontAction(2)
+    await vi.waitFor(() => {
+      expect(window.webContents.send).toHaveBeenCalledWith(DESKTOP_IPC.sidebarFontSize, 16)
+      expect(linuxFontActions()[2]?.enabled).toBe(false)
+    })
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ sidebarFontSize: 16 })
+    expect(window.show).not.toHaveBeenCalled()
+    window.webContents.send.mockClear()
+    window.webContents.emit('did-finish-load')
+    expect(window.webContents.send).toHaveBeenCalledWith(DESKTOP_IPC.sidebarFontSize, 16)
+  })
+
+  it('keeps the current Linux sidebar size and allows retry after a failed save', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    await readyWorkspace()
+    const window = harness.windows[0]!
+    const path = join(harness.app.getPath('userData'), 'desktop', 'settings.json')
+    writeFileSync(path, '{')
+    clickFontAction(0)
+    await vi.waitFor(() => {
+      expect(harness.dialog.showErrorBox).toHaveBeenCalledWith(en.traySettings, expect.stringContaining(path))
+      expect(linuxFontActions().map(item => item.enabled)).toEqual([true, true, false])
+    })
+    expect(readFileSync(path, 'utf8')).toBe('{')
+    expect(window.webContents.send).not.toHaveBeenCalledWith(DESKTOP_IPC.sidebarFontSize, 17)
+    writeFileSync(path, '{}')
+    clickFontAction(0)
+    await vi.waitFor(() => { expect(window.webContents.send).toHaveBeenCalledWith(DESKTOP_IPC.sidebarFontSize, 17) })
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ sidebarFontSize: 17 })
+  })
 
   it('keeps Linux running after close and toggles restore/minimize independently of the Open menu', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')

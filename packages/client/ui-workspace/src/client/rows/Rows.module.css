@@ -70,8 +70,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: var(--dsh-sidebar-font-size, var(--dsw-font-base-16-font-size));
+  line-height: var(--dsh-sidebar-line-height, var(--dsw-font-base-16-line-height));
 }
 
 .searchResultMeta {
@@ -110,7 +110,7 @@
 
 /* Compact one-line Workspace row after removing the session-count subtitle. */
 .projectRow {
-  height: 32px;
+  height: max(32px, calc(var(--dsh-sidebar-line-height, var(--dsw-font-base-16-line-height)) + 8px));
   align-items: center;
   box-sizing: border-box;
 }
@@ -121,7 +121,7 @@
 
 /* Session titles share the workspace icon slot and compact label gap. */
 .sessionRow {
-  height: 32px;
+  height: max(32px, calc(var(--dsh-sidebar-line-height, var(--dsw-font-base-16-line-height)) + 8px));
   gap: 0;
 }
 
@@ -183,14 +183,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: var(--dsh-sidebar-font-size, var(--dsw-font-base-16-font-size));
+  line-height: var(--dsh-sidebar-line-height, var(--dsw-font-base-16-line-height));
 }
 
 .renameInput {
   min-width: 0;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: var(--dsh-sidebar-font-size, var(--dsw-font-base-16-font-size));
+  line-height: var(--dsh-sidebar-line-height, var(--dsw-font-base-16-line-height));
   padding: 0 2px;
   border: 0.5px solid var(--dsw-alias-border-l4);
   border-radius: var(--dsw-radius-sm);
