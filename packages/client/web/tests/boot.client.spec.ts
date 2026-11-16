@@ -9,6 +9,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppWebEntry } from '../src/boot.ts'
 import { BootPage } from '../src/boot-page.ts'
 
+// Startup tests supply their module graph explicitly; compiled seed validation belongs to built-artifact tests.
+vi.mock('../src/seed.ts', () => ({
+  getStaticModules: (): ClientModuleCreateOptions['staticModules'] => [],
+}))
+
 const MODULES_ID = '@deepseek-ai/dsh-client-modules'
 const REQUIRED_ID = '@deepseek-ai/dsh-client-ui-chat'
 const PROVIDER_CLIENT_ID = 'provider/client'

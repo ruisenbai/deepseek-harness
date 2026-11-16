@@ -8,7 +8,7 @@ import {
   desktopBuildRecordFilename,
   resolveDesktopAutoUpdateConfig,
   resolveDesktopAutoUpdateTarget,
-} from './desktop-auto-update-environment.mjs'
+} from '@deepseek-ai/dsh-desktop-publisher/desktop-auto-update-environment.mjs'
 import { desktopArtifactOutput, desktopTargetBuildPaths, type DesktopBuildTarget } from './desktop-build-paths.mjs'
 import { packageMacOSArtifacts, type DesktopPrepackagedArtifact } from './package-macos.ts'
 import { loadDesktopPackageEnvironment, localDesktopPackageEnvironment, validateDesktopPackageEnvironment } from './desktop-package-environment.mjs'

@@ -1,5 +1,7 @@
+import type { DesktopAutoUpdateTarget } from '@deepseek-ai/dsh-desktop-publisher/desktop-auto-update-environment.mjs'
+
 /** Platform and architecture identifiers accepted by local Desktop builds. */
-export type DesktopBuildTarget = 'mac-arm64' | 'mac-x64' | 'win-x64' | 'linux-x64'
+export type DesktopBuildTarget = DesktopAutoUpdateTarget | 'linux-x64'
 
 /** Mutable target directories plus shared download and package caches. */
 export interface DesktopTargetBuildPaths {
