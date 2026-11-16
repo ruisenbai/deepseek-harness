@@ -18,11 +18,8 @@ import './base.css'
 
 type ModuleSeams = Pick<ClientModuleCreateOptions, 'loadBundle' | 'resolveAsset'>
 
-/** Module transport hooks and artwork supplied by the application before plugins load. */
-export type BootSeams = ModuleSeams & {
-  /** URL of the startup whale atlas; absent callers use the progress spinner. */
-  readonly whaleAtlasUrl?: string
-}
+/** Optional module transport hooks supplied by the application before plugins load. */
+export type BootSeams = ModuleSeams
 
 /** Browser boot entry consumed by `apps/web`. */
 export class AppWebEntry {
@@ -37,13 +34,12 @@ export class AppWebEntry {
   /**
    * Draw the boot page; {@link run} starts the loader.
    * @param container - Application mount point.
-   * @param seams - Optional module transport replacement and startup artwork URL.
+   * @param seams - Optional module transport replacement.
    */
   constructor(container: HTMLElement, seams?: BootSeams) {
     this.container = container
-    const { whaleAtlasUrl, ...moduleSeams } = seams ?? {}
-    this.seams = moduleSeams
-    this.page = new BootPage(container, whaleAtlasUrl)
+    this.seams = seams ?? {}
+    this.page = new BootPage(container)
   }
 
   /**
@@ -100,7 +96,6 @@ export class AppWebEntry {
           if (state !== 'failed') this.page.setState(name, state)
         },
       })
-      await this.page.waitForWhale()
       // The shell owns the one watcher that keeps Electron's window drag rects in
       // step with the rows that own them (electron#32341), so no chrome row has to
       // know that trap. It installs before the first mount, so the surface the

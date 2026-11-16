@@ -25,7 +25,7 @@ kind: "package-library"
 <a id="use-this-package"></a>
 ## 使用本包
 
-组装浏览器应用时使用它：`apps/web` 的 Vite 入口对挂载点运行 `new AppWebEntry(container).run()`，启动页会在激活过程中向用户展示进度。普通浏览器调用方不传任何选项。默认使用预注入的页面传输，除非提供 `seams` 覆盖：当 `globalThis.__DSH_TRANSPORT__` 携带 `loadBundle` 时，模块阶段将其采纳为 bundle 传输，`immediately` 层级仍通过该载体预取；携带 `resolveAsset` 时，模块阶段将其采纳为解析器，把每个 `require.asset` 包资源引用映射为页面可加载的 URL；而显式 `seams` 仍然优先（例如外部 `<script>` 执行无法到达页面上下文的 jsdom 测试）。
+组装浏览器应用时使用它：`apps/web` 的 Vite 入口对挂载点运行 `new AppWebEntry(container).run()`。内置启动页在插件激活期间只显示无文字的进度转圈。Host 插件可通过 index 注入添加独立开场，不延迟内核挂载主界面。默认使用预注入的页面传输，除非提供 `seams` 覆盖：当 `globalThis.__DSH_TRANSPORT__` 携带 `loadBundle` 时，模块阶段将其采纳为 bundle 传输，`immediately` 层级仍通过该载体预取；携带 `resolveAsset` 时，模块阶段将其采纳为解析器，把每个 `require.asset` 包资源引用映射为页面可加载的 URL；而显式 `seams` 仍然优先（例如外部 `<script>` 执行无法到达页面上下文的 jsdom 测试）。
 
 静态应用页面在入口运行前安装 `__DSH_BOOT_READY__`。`run()` 等待期间会立即显示启动页；页面所有者通过 `applyIndexInjections`应用 Host 注入项，并在所有脚本完成后兑现延迟对象。延迟对象拒绝时显示启动失败；若调用方提供 `run(onFailure)`，则由外部呈现错误并保留加载页。Desktop 使用该回调请求原生恢复。Desktop 与 WebWorker 共享注入解释器；服务端 `tapIndex` HTML 转换仅适用于服务端提供的文档。
 
@@ -37,11 +37,11 @@ kind: "package-library"
 
 ### 启动过程是怎样的
 
-启动分两个阶段：模块阶段接纳 parser 已加载的 bootstrap 批次，从 Host 提供的启动图构建模块系统，并通过只执行一次的共享 application 批次 URL 预取 `immediately` 层级。插件阶段随后激活每个图 entry 并等待全部就绪。若启动页正在显示虎鲸，会先等当前首轮跃水动画结束，再把带标记的启动 DOM 交给 UI 渲染器，由它 hydrate 并切换到完整 UI。
+启动分两个阶段：模块阶段接纳 parser 已加载的 bootstrap 批次，从 Host 提供的启动图构建模块系统，并通过只执行一次的共享 application 批次 URL 预取 `immediately` 层级。插件阶段随后激活每个图 entry 并等待全部就绪。必需插件就绪后，带标记的启动 DOM 交给 UI 渲染器，由它 hydrate 并切换到完整 UI。注入的开场自行负责额外的视觉等待。
 
 ### 启动页
 
-启动页使用原生 DOM、本地 CSS 和应用打包的虎鲸图集，因此 bundle 与插件激活失败仍保持可见。Web 和 Desktop 会在 HARNESS 字样下循环播放点阵虎鲸，对比度高于新对话背景；启动很快时，也会等当前跃水动画结束再打开主界面。开启「减少动态效果」时显示静态画面，插件就绪后立即打开；页面不可见时也不等待。图集或 Canvas 无法绘制时，改为显示进度转圈，其 CSS 圆弧随 entry 激活而增长，且不会因动画延迟打开。必需插件导入或激活失败时，页面按名称列出每个未激活插件及原因（缺失服务、导入失败或激活错误），并标出必需项，而不是白屏。可选插件的失败只出现在一条控制台警告中，不会阻止应用启动。控制台包含原始导入错误。
+启动页使用原生 DOM 和本地 CSS，因此 bundle 与插件激活失败仍保持可见。转圈不显示任何文字，CSS 进度圆弧随 entry 激活而增长。失败时启动页标记 `[data-dsh-boot-failed]`，供注入的开场露出错误报告。启动页会列出每个未激活的必需插件及原因（缺失服务、导入失败或激活错误）；可选插件失败只在控制台报告，不阻止界面挂载。
 
 <a id="the-shared-module-table"></a>
 ### 共享模块表
@@ -80,7 +80,7 @@ kind: "package-library"
 
 ### 启动页机制
 
-启动页是原生 DOM 加本地 CSS，其回退字体与颜色匹配加载期间到达的主题 token。虎鲸绘制器不依赖客户端插件就能读取图集，在首轮可见播放结束时发出完成信号，并在启动页退出时释放帧任务、图像和观察器。图集两秒内未加载会回退到转圈；播放期限可避免动画帧任务无响应时无限阻塞启动。`internal/status` 事件更新转圈的进度圆弧；失败的 entry 在审计前不绘制，因为它可能是可选的。hydrate 会保留当前图案直到应用提交，`fail()` 渲染抛出的原因。React 挂载、slot 渲染与应用组装位于 `ui-renderer`；`ui-layout` 拥有组装后的浏览器标题投影。
+启动页是原生 DOM 加本地 CSS，回退颜色与加载期间抵达的主题 token 一致。`internal/status` 事件更新同一个转圈节点；失败的 entry 在审计前不绘制，因为它可能是可选的。hydrate 在应用提交期间保留转圈，`fail()` 则绘制抛出的原因。React 挂载、slot 渲染和组装位于 `ui-renderer`；`ui-layout` 拥有组装后的浏览器标题投影。
 
 启动内核把清单条目创建交给 Client Modules，使启动后的动态图同步继续持有相同的条目身份。初始激活审计只拒绝必需 entry；后续页面本地失败显示在「设置 → 插件 → 插件列表」。
 
@@ -92,8 +92,7 @@ kind: "package-library"
 | [`src/boot.ts`](src/boot.ts) | `AppWebEntry`：模块阶段、启动页、immediately 层级预取、安装窗口拖拽矩形 watcher，随后调用 `bootClient` + `mountClient` |
 | [`src/boot-client.ts`](src/boot-client.ts) | `bootClient` / `assertEntriesActive`：挂载 Loader、每个 manifest 行一个 entry、激活审计 |
 | [`src/mount.ts`](src/mount.ts) | `mountClient`：经 `uiRenderer` 依赖 fiber 完成渲染器交接 |
-| [`src/boot-page.ts`](src/boot-page.ts) | 无框架启动页：虎鲸或备用转圈、逐 entry 状态、失败渲染 |
-| [`src/boot-whale.ts`](src/boot-whale.ts) | 启动虎鲸的 Canvas 播放、首轮完成信号、减少动态效果时的静态画面和资源清理 |
+| [`src/boot-page.ts`](src/boot-page.ts) | 无框架启动页：无文字转圈、逐 entry 状态、失败报告 |
 | [`src/platform.ts`](src/platform.ts) | `PLATFORM_MODULES` / `PRELOADED_CLIENT_EXTERNALS`：隐式 external 基座 |
 | [`src/seed.ts`](src/seed.ts) | 启动时交给 loader 的静态模块表 |
 | [`src/window-drag/regions.ts`](src/window-drag/regions.ts) | macOS/Linux app-region 组合模型，以及 `base.css` 减除的交互元素选择器 |

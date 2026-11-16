@@ -1394,6 +1394,12 @@ async function main(): Promise<void> {
   const createMainWindow = (): BrowserWindow => {
     const window = createWindow(appPreload, false, true)
     mainWindow = window
+    const notifyVisibleBootPage = (): void => {
+      if (!window.isDestroyed() && window.isVisible()) window.webContents.send(DESKTOP_IPC.bootWindowShown)
+    }
+    window.on('show', notifyVisibleBootPage)
+    // A reload creates a fresh preload listener in the same visible window.
+    window.webContents.on('did-finish-load', notifyVisibleBootPage)
     if (process.platform === 'linux') {
       const sendMaximized = (): void => {
         if (!window.isDestroyed()) window.webContents.send(DESKTOP_IPC.windowMaximized, window.isMaximized())

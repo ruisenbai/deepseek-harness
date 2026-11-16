@@ -177,7 +177,7 @@ describe('official home whale in the default web profile', () => {
     expect(consoleState.warnings).toEqual([])
   })
 
-  it('shows a brighter whale while the shared Web boot page waits for plugins', async () => {
+  it('shows an unbranded loading indicator while client plugins are pending', async () => {
     const bootPage = await browser.newPage({ viewport: { width: 900, height: 700 }, locale: ZH_BROWSER_LOCALE })
     const release = Promise.withResolvers<undefined>()
     let held = false
@@ -191,43 +191,17 @@ describe('official home whale in the default web profile', () => {
     })
     const navigation = bootPage.goto(scaffold.authenticatedUrl, { waitUntil: 'domcontentloaded' })
     try {
-      const canvas = bootPage.locator('[data-dsh-boot-whale]')
-      await canvas.waitFor()
+      const spinner = bootPage.locator('[data-dsh-boot-spinner]')
+      await spinner.waitFor()
       await expect.poll(() => held).toBe(true)
-      await expect.poll(() => canvas.evaluate((node: HTMLCanvasElement) => {
-        const pixels = node.getContext('2d')!.getImageData(0, 0, node.width, node.height).data
-        let visible = 0
-        for (let index = 3; index < pixels.length; index += 4) if (pixels[index]! > 20) visible++
-        return visible
-      })).toBeGreaterThan(250)
-      expect(await bootPage.locator('[data-dsh-boot-spinner]').count()).toBe(0)
-      expect(await canvas.getAttribute('aria-hidden')).toBe('true')
-      const homeOpacity = await page.locator('[data-home-whale]').evaluate(node => Number(getComputedStyle(node).opacity))
-      const bootOpacity = await canvas.evaluate(node => Number(getComputedStyle(node).opacity))
-      expect(bootOpacity).toBeGreaterThan(homeOpacity)
-      expect(bootOpacity).toBeCloseTo(0.95)
-      const box = (await canvas.boundingBox())!
-      expect(box.x).toBeGreaterThanOrEqual(0)
-      expect(box.width).toBe(420)
-      expect(box.x + box.width).toBeLessThanOrEqual(900)
-      await bootPage.emulateMedia({ reducedMotion: 'reduce' })
-      const lightFrame = await canvas.evaluate((node: HTMLCanvasElement) => node.toDataURL())
-      const lightInk = await canvas.evaluate(node => getComputedStyle(node).color)
-      await captureHeldBoot(bootPage, `${captureDir}/boot-light.png`)
-      await bootPage.evaluate(() => {
-        document.body.dataset.dsDarkTheme = ''
-        document.body.style.setProperty('--dsh-boot-bg', '#151517')
-      })
-      await expect.poll(() => canvas.evaluate(node => getComputedStyle(node).color)).not.toBe(lightInk)
-      await expect.poll(() => canvas.evaluate((node: HTMLCanvasElement) => node.toDataURL())).not.toBe(lightFrame)
-      await captureHeldBoot(bootPage, `${captureDir}/boot-dark.png`)
-      expect(await canvas.evaluate((node: HTMLCanvasElement) =>
-        node.getContext('2d')!.getImageData(0, 0, node.width, node.height).data.some((value, index) => index % 4 === 3 && value > 10)),
-      ).toBe(true)
-      await bootPage.setViewportSize({ width: 390, height: 720 })
-      await expect.poll(async () => (await canvas.boundingBox())?.width).toBeLessThanOrEqual(390)
-      expect(await bootPage.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
-      await captureHeldBoot(bootPage, `${captureDir}/boot-still.png`)
+      expect(await bootPage.locator('[data-dsh-boot-whale]').count()).toBe(0)
+      expect(await bootPage.locator('[data-dsh-boot]').textContent()).toBe('')
+      const box = (await spinner.boundingBox())!
+      expect(box.x).toBeGreaterThan(0)
+      expect(box.y).toBeGreaterThan(0)
+      expect(box.x + box.width).toBeLessThan(900)
+      expect(box.y + box.height).toBeLessThan(700)
+      await captureHeldBoot(bootPage, `${captureDir}/boot-default.png`)
     } finally {
       release.resolve(undefined)
       try { await navigation } finally { await bootPage.close() }

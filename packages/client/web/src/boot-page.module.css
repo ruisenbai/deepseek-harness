@@ -3,7 +3,6 @@
 .boot {
   --dsh-boot-label-primary: #0f1115;
   --dsh-boot-label-secondary: #61666b;
-  --dsh-boot-label-tertiary: #81858c;
   --dsh-boot-border: rgb(0 0 0 / 10%);
   --dsh-boot-brand: #0f1115;
 
@@ -16,7 +15,6 @@
 :global(body[data-ds-dark-theme]) .boot {
   --dsh-boot-label-primary: #f9fafb;
   --dsh-boot-label-secondary: #cfd3d6;
-  --dsh-boot-label-tertiary: #adb2b8;
   --dsh-boot-border: rgb(255 255 255 / 12%);
   --dsh-boot-brand: #f9fafb;
 }
@@ -26,30 +24,6 @@
   flex-direction: column;
   align-items: center;
   gap: 16px;
-}
-
-.wordmark {
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--dsw-alias-label-primary, var(--dsh-boot-label-primary));
-}
-
-.hint {
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-tertiary, var(--dsh-boot-label-tertiary));
-}
-
-.whale {
-  display: block;
-  width: min(420px, 82vw, 64vh);
-  height: auto;
-  aspect-ratio: 16 / 9;
-  color: var(--dsh-boot-label-primary);
-  opacity: 0.95;
-  pointer-events: none;
 }
 
 .spinner {

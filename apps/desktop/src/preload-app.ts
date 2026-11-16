@@ -114,9 +114,21 @@ if (location.protocol === `${SCHEME}:` && location.hostname === 'app') {
   contextBridge.exposeInMainWorld('__DSH_HOST_PATHS__', {
     pathFor: (file: File) => webUtils.getPathForFile(file),
   })
+  const windowShownListeners = new Set<() => void>()
+  let windowShown = false
+  ipcRenderer.on(DESKTOP_IPC.bootWindowShown, () => {
+    windowShown = true
+    for (const listener of windowShownListeners) listener()
+    windowShownListeners.clear()
+  })
   contextBridge.exposeInMainWorld('dshDesktopBoot', {
     ready: () => ipcRenderer.invoke(DESKTOP_IPC.boot) as Promise<unknown>,
     failed: (message: string) => ipcRenderer.invoke(DESKTOP_IPC.bootFailed, message) as Promise<void>,
+    onWindowShown: (listener: () => void) => {
+      if (windowShown) queueMicrotask(listener)
+      else windowShownListeners.add(listener)
+      return () => { windowShownListeners.delete(listener) }
+    },
   })
   contextBridge.exposeInMainWorld('dshPlatform', {
     open: (page: 'usage' | 'top-up', bounds: { x: number; y: number; width: number; height: number }) => ipcRenderer.invoke(PLATFORM_IPC.open, page, bounds),

@@ -1665,6 +1665,21 @@ describe('desktop main startup', () => {
     return harness.hosts[0]!
   }
 
+  it('starts each boot page when the window is shown or reloaded while visible', async () => {
+    vi.stubGlobal('process', { ...process, platform: 'linux' })
+    await readyForUpdate()
+    const window = harness.windows[0]!
+    window.visible = false
+    window.webContents.emit('did-finish-load')
+    expect(window.webContents.send).not.toHaveBeenCalledWith(DESKTOP_IPC.bootWindowShown)
+    window.visible = true
+    window.emit('show')
+    expect(window.webContents.send).toHaveBeenCalledWith(DESKTOP_IPC.bootWindowShown)
+    window.webContents.send.mockClear()
+    window.webContents.emit('did-finish-load')
+    expect(window.webContents.send).toHaveBeenCalledWith(DESKTOP_IPC.bootWindowShown)
+  })
+
   it.each([
     ['win32', ['--updated'], true],
     ['win32', [], false],

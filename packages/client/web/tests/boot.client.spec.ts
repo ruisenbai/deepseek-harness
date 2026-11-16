@@ -7,7 +7,6 @@ import type {
 } from '@deepseek-ai/dsh-client-modules/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppWebEntry } from '../src/boot.ts'
-import { BootPage } from '../src/boot-page.ts'
 
 // Startup tests supply their module graph explicitly; compiled seed validation belongs to built-artifact tests.
 vi.mock('../src/seed.ts', () => ({
@@ -63,21 +62,22 @@ async function expectBootFailure(setup: () => void, message: string): Promise<vo
 }
 
 describe('bootstrap failure rendering', () => {
-  it('keeps startup artwork out of the module transport options', async () => {
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+  it('passes transport hooks to the module system without branding the loading page', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const container = document.createElement('div')
     document.body.append(container)
     const create = vi.fn<(options: ClientModuleCreateOptions) => modulesClient.ClientModuleSystem>((options) => {
-      expect(options).not.toHaveProperty('whaleAtlasUrl')
-      throw new Error('artwork option stayed in the boot page')
+      expect(options.loadBundle).toBe(loadBundle)
+      throw new Error('module transport reached the loader')
     })
+    const loadBundle = vi.fn(async () => {})
     installFacade(create)
-    const entry = new AppWebEntry(container, { whaleAtlasUrl: '/boot-whale.webp' })
+    const entry = new AppWebEntry(container, { loadBundle })
     try {
+      expect(container.textContent).toBe('')
       await entry.run()
       expect(create).toHaveBeenCalledOnce()
-      expect(container.textContent).toContain('artwork option stayed in the boot page')
+      expect(container.textContent).toContain('module transport reached the loader')
     } finally {
       await entry.dispose()
     }
@@ -91,7 +91,7 @@ describe('bootstrap failure rendering', () => {
     const failure = vi.fn()
     await entry.run(failure)
     expect(failure).toHaveBeenCalledWith(new Error('web boot: window.__ModuleLoader__ bootstrap facade is missing'))
-    expect(container.textContent).toContain('Loading plugins')
+    expect(container.textContent).toBe('')
     expect(container.textContent).not.toContain('Failed to load plugins')
     expect(container.querySelector('[data-dsh-boot-spinner]')).not.toBeNull()
     await entry.dispose()
@@ -167,7 +167,7 @@ describe('bootstrap failure rendering', () => {
     }
   })
 
-  it('keeps a ready boot page until the first whale breach finishes', async () => {
+  it('mounts a ready application without an animation delay', async () => {
     const container = document.createElement('div')
     document.body.append(container)
     const target = installFacade()
@@ -177,8 +177,6 @@ describe('bootstrap failure rendering', () => {
       batches: [{ phase: 'application', url: '/application.js', rev: '1', entries: ['renderer'] }],
     }
     const mounted = vi.fn<(element: HTMLElement) => () => void>(() => () => {})
-    const firstCycle = Promise.withResolvers<undefined>()
-    const waiting = vi.spyOn(BootPage.prototype, 'waitForWhale').mockReturnValue(firstCycle.promise)
     const entry = new AppWebEntry(container, {
       loadBundle: async () => {
         target.load({ id: 'renderer', factory: () => ({
@@ -186,16 +184,10 @@ describe('bootstrap failure rendering', () => {
         }) })
       },
     })
-    const boot = entry.run()
     try {
-      await vi.waitFor(() => { expect(waiting).toHaveBeenCalledOnce() })
-      expect(mounted).not.toHaveBeenCalled()
-      firstCycle.resolve(undefined)
-      await boot
+      await entry.run()
       expect(mounted).toHaveBeenCalledExactlyOnceWith(container)
     } finally {
-      firstCycle.resolve(undefined)
-      await boot
       await entry.dispose()
     }
   })

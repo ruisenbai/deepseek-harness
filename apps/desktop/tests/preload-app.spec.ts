@@ -124,6 +124,27 @@ it('exposes asynchronous boot only to the local application document', async () 
   expect(electron.contextBridge.exposeInMainWorld.mock.calls.some(([name]) => name === 'dshDesktopBoot')).toBe(false)
 })
 
+it('starts the boot animation once when the desktop window first appears', async () => {
+  vi.stubGlobal('location', new URL('dsh-app://app/'))
+  await import('../src/preload-app.ts')
+  const api = electron.contextBridge.exposeInMainWorld.mock.calls.find(([name]) => name === 'dshDesktopBoot')?.[1] as {
+    onWindowShown(listener: () => void): () => void
+  }
+  const signal = electron.ipcRenderer.on.mock.calls.find(([channel]) => channel === DESKTOP_IPC.bootWindowShown)?.[1] as () => void
+  const first = vi.fn()
+  const cancelled = vi.fn()
+  api.onWindowShown(first)
+  api.onWindowShown(cancelled)()
+  expect(first).not.toHaveBeenCalled()
+  signal()
+  expect(first).toHaveBeenCalledOnce()
+  expect(cancelled).not.toHaveBeenCalled()
+  const late = vi.fn()
+  api.onWindowShown(late)
+  await Promise.resolve()
+  expect(late).toHaveBeenCalledOnce()
+})
+
 it('exposes a directory picker only to the local application document', async () => {
   vi.stubGlobal('location', new URL('dsh-app://app/'))
   await import('../src/preload-app.ts')

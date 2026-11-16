@@ -25,7 +25,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Use it when you assemble the browser application: `apps/web`'s Vite entry runs `new AppWebEntry(container).run()` against the mount point, and the boot page carries the user through activation. Ordinary browser callers pass no options. A pre-injected page transport is the default ahead of the `seams` override: when `globalThis.__DSH_TRANSPORT__` carries `loadBundle`, the module stage adopts it as the bundle transport and retains the immediate-tier prefetch through that carrier; when it carries `resolveAsset`, the module stage adopts it as the resolver that maps each `require.asset` package-asset reference to a URL the page can load; while explicit `seams` still win (for example jsdom tests, where external `<script>` execution cannot reach the page context).
+Use it when you assemble the browser application: `apps/web`'s Vite entry runs `new AppWebEntry(container).run()` against the mount point. The built-in boot page shows a textless progress spinner while plugins activate. A Host plugin can add its own opening through index injections without delaying the kernel's application mount. A pre-injected page transport is the default ahead of the `seams` override: when `globalThis.__DSH_TRANSPORT__` carries `loadBundle`, the module stage adopts it as the bundle transport and retains the immediate-tier prefetch through that carrier; when it carries `resolveAsset`, the module stage adopts it as the resolver that maps each `require.asset` package-asset reference to a URL the page can load; while explicit `seams` still win (for example jsdom tests, where external `<script>` execution cannot reach the page context).
 
 Static application pages install `__DSH_BOOT_READY__` before the entry runs. The boot page renders immediately while `run()` waits; the page owner applies the Host rows with `applyIndexInjections` and resolves the deferred after all scripts finish. A rejected deferred renders a boot failure unless the caller supplies `run(onFailure)` to present the error externally while retaining the loading page. Desktop uses this callback to request native recovery. Desktop and WebWorker share the injection interpreter; server-side `tapIndex` HTML transforms apply only to served documents.
 
@@ -37,11 +37,11 @@ On macOS and Linux Desktop, marked header rows expose their blank areas for nati
 
 ### What boot looks like
 
-Boot runs in two stages: the module stage adopts the parser-loaded bootstrap batch, builds the module system from the Host-provided boot graph, and prefetches the `immediately` tier through the shared application-batch URL, which executes once. The plugin stage then activates every graph entry and waits for all of them. A ready boot page with a visible whale finishes its first breach before handing the marked boot DOM to the UI renderer, which hydrates it and switches to the complete UI.
+Boot runs in two stages: the module stage adopts the parser-loaded bootstrap batch, builds the module system from the Host-provided boot graph, and prefetches the `immediately` tier through the shared application-batch URL, which executes once. The plugin stage then activates every graph entry and waits for all of them. Once required entries are ready, the marked boot DOM passes to the UI renderer, which hydrates it and switches to the complete UI. An injected opening owns any additional visual delay.
 
 ### The boot page
 
-The boot page uses plain DOM, local CSS, and an application-bundled whale atlas, so bundle and plugin-activation failures remain visible. Web and Desktop show a looping dot whale beneath HARNESS with stronger contrast than the new-conversation background whale. A fast successful boot waits for the current breach to end before opening the application. Reduced-motion mode shows one still frame and opens as soon as plugins are ready; an invisible page also does not wait. If the atlas or Canvas cannot render, the page shows the progress spinner whose CSS arc grows as entries activate and opens without an animation delay. When a required plugin fails import or activation, the page names every inactive plugin with the reason (missing service, import failure, or activation error) and marks the required ones, instead of a blank page. An optional plugin's failure appears in one console warning and does not stop the application. The console contains the original import error.
+The boot page uses plain DOM and local CSS, so bundle and plugin-activation failures remain visible. Its spinner has no visible wording and grows its CSS progress arc as entries activate. A failure marks `[data-dsh-boot-failed]`, allowing an injected opening to reveal the report. The page names every inactive required plugin with the reason (missing service, import failure, or activation error); optional-plugin failures appear in the console and do not stop mounting.
 
 <a id="the-shared-module-table"></a>
 ### The shared module table
@@ -80,7 +80,7 @@ The kernel owns exactly three things: the module system, the Cordis Loader, and 
 
 ### Boot page mechanics
 
-The boot page is plain DOM with local CSS whose fallback fonts and colors match the theme tokens that arrive during loading. The whale renderer reads its atlas without client plugins, reports when the first visible playback finishes, and releases its frame work, image, and observers when the page leaves. An atlas that does not load within two seconds falls back to the spinner; a playback deadline prevents an unresponsive animation frame loop from holding startup indefinitely. `internal/status` events update the spinner's progress arc; a failed entry is not drawn before the audit, because it may be optional. Hydration preserves the current graphic through the application commit, and `fail()` renders the thrown reason. React mounting, slot rendering, and assembly live in `ui-renderer`; `ui-layout` owns the assembled browser-title projection.
+The boot page is plain DOM with local CSS whose fallback colors match the theme tokens that arrive during loading. `internal/status` events update one spinner node; a failed entry is not drawn before the audit, because it may be optional. Hydration preserves the spinner through the application commit, and `fail()` renders the thrown reason. React mounting, slot rendering, and assembly live in `ui-renderer`; `ui-layout` owns the assembled browser-title projection.
 
 The boot kernel delegates manifest entry creation to Client Modules so live graph synchronization owns the same entry identities after startup. The initial activation audit rejects only required entries; later page-local failures appear in Settings → Plugins → Plugin list.
 
@@ -92,8 +92,7 @@ The boot kernel delegates manifest entry creation to Client Modules so live grap
 | [`src/boot.ts`](src/boot.ts) | `AppWebEntry`: module stage, boot page, immediate-tier prefetch, window drag-rect watcher install, then `bootClient` + `mountClient` |
 | [`src/boot-client.ts`](src/boot-client.ts) | `bootClient` / `assertEntriesActive`: Loader mount, one entry per manifest row, activation audit |
 | [`src/mount.ts`](src/mount.ts) | `mountClient`: renderer handoff through a `uiRenderer` dependency fiber |
-| [`src/boot-page.ts`](src/boot-page.ts) | Framework-free boot page: whale or fallback spinner, per-entry status, failure rendering |
-| [`src/boot-whale.ts`](src/boot-whale.ts) | Boot whale Canvas playback, first-cycle completion, reduced-motion still frame, and resource cleanup |
+| [`src/boot-page.ts`](src/boot-page.ts) | Framework-free boot page: textless spinner, per-entry status, failure rendering |
 | [`src/platform.ts`](src/platform.ts) | `PLATFORM_MODULES` / `PRELOADED_CLIENT_EXTERNALS`: the implicit external baseline |
 | [`src/seed.ts`](src/seed.ts) | Static module table handed to the loader at boot |
 | [`src/window-drag/regions.ts`](src/window-drag/regions.ts) | The macOS/Linux app-region composition model, and the interactive selector `base.css` subtracts |
