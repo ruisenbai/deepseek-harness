@@ -50,6 +50,11 @@ html[data-platform='darwin'] body {
   isolation: isolate;
 }
 
+/* Linux desktop panes own vertical scrolling, not the window document. */
+html[data-linux-titlebar] {
+  overflow-y: hidden;
+}
+
 /* The shipped Electron runtime inherits app-region and collects full boxes
    without overflow clips. Only explicit owners contribute geometry, so clipped
    descendants cannot subtract a chrome row after scrolling outside its view. */

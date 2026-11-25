@@ -305,6 +305,38 @@ describe('web e2e: input card position across view tabs', () => {
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)
 
+  it('keeps the Chat scrollbar without a second scrollbar at the Linux window edge', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-linux-window-scrollbar'))
+    await setMeasuredViewport(page, NARROW_VIEWPORT, true)
+    await showTab(page, 'Chat')
+    const bands = await page.locator('[data-conversation-scroll]').evaluate((chat) => {
+      const root = document.documentElement
+      const overflow = document.createElement('div')
+      // A body-level overlay can extend beyond the window even though the app frame fits.
+      overflow.style.cssText = 'position: absolute; top: 100%; left: 0; width: 1px; height: 8px;'
+      document.body.append(overflow)
+      try {
+        const web = window.innerWidth - root.clientWidth
+        root.dataset.linuxTitlebar = ''
+        return {
+          web,
+          desktop: window.innerWidth - root.clientWidth,
+          chat: Math.round(chat.getBoundingClientRect().width) - chat.clientWidth,
+          chatScrolls: chat.scrollHeight > chat.clientHeight,
+          chatOverflowY: getComputedStyle(chat).overflowY,
+        }
+      } finally {
+        delete root.dataset.linuxTitlebar
+        overflow.remove()
+      }
+    })
+    expect(bands.web).toBeGreaterThan(0)
+    expect(bands.desktop).toBe(0)
+    expect(bands.chat).toBeGreaterThan(0)
+    expect(bands.chatScrolls).toBe(true)
+    expect(bands.chatOverflowY).toBe('auto')
+  })
+
   it('holds the input card in place when the tab changes', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-composer-tab-geometry-wide'))
     await setMeasuredViewport(page, WIDE_VIEWPORT, false)
