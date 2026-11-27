@@ -1,5 +1,6 @@
 /** Electron shell: desktop project ownership, custom protocol, windows, and lifecycle. */
 
+import { openLauncherCount } from './linux-launcher-count.ts'
 import { installFileActions } from './file-actions.ts'
 import { configurationFailure, channelSaveFailure, configurationMessage } from './update-configuration.ts'
 import type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
@@ -891,6 +892,21 @@ async function main(): Promise<void> {
     if (owner === undefined || event.sender !== owner.webContents || event.senderFrame !== owner.webContents.mainFrame
       || !event.senderFrame.url.startsWith('dsh-app://app/')) throw new Error('Rejected Platform command')
     return owner
+  }
+  if (process.platform === 'linux') {
+    let launcher: ReturnType<typeof openLauncherCount> | undefined
+    ipcMain.on(DESKTOP_IPC.taskbarCount, (event, count: unknown) => {
+      if (mainWindow === undefined || event.sender !== mainWindow.webContents
+        || event.senderFrame !== event.sender.mainFrame || !event.senderFrame.url.startsWith(`${SCHEME}://app/`)) return
+      if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) return
+      try {
+        launcher ??= openLauncherCount(app.getAppPath(), app.isPackaged)
+        launcher.set(count)
+      } catch (error) {
+        console.warn('[desktop] Could not update the Linux taskbar badge:', error)
+      }
+    })
+    app.once('will-quit', () => launcher?.close())
   }
   installFileActions(assertMainApplication, () => hostUrl)
   ipcMain.on(PLATFORM_IPC.bootstrap, (event) => {

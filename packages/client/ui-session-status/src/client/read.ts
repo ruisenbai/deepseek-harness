@@ -22,6 +22,19 @@ const CARRIER_LOST: RemoteStreamCarrierFailure['code'] = 'gateway/carrier-lost'
  * @param status - status table whose reading model receives the records.
  */
 export function installReading(ctx: Context, status: UiSessionStatus): void {
+  const badge = (globalThis as typeof globalThis & { dshDesktop?: { taskbarBadge?: {
+    observe(records: readonly SessionReadChange['state'][], baseline: boolean): void
+    opened(sessionId: string): void
+  } } }).dshDesktop?.taskbarBadge
+  if (badge && typeof document !== 'undefined') ctx.effect(() => {
+    const clicked = (event: MouseEvent): void => {
+      if (event.button !== 0 || !(event.target instanceof Element)) return
+      const body = event.target.closest('[data-conversation-scroll]')?.closest<HTMLElement>('[data-conversation-session]')
+      if (body?.dataset.conversationSession) badge.opened(body.dataset.conversationSession)
+    }
+    document.addEventListener('click', clicked)
+    return () => document.removeEventListener('click', clicked)
+  }, 'session-status: desktop conversation visits')
   const reading = status.reading
   installReadingAcknowledgements(ctx, ctx.sessions, reading)
   // Each access grant runs one stream. Disposal stops failure reports and carrier retries at once, but a frame
@@ -43,8 +56,8 @@ export function installReading(ctx: Context, status: UiSessionStatus): void {
     const control = new RemoteSnapshotStream<SessionReadBaseline, SessionReadChange>(stream, {
       name: 'Session reading state',
       isSnapshot: (frame): frame is SessionReadBaseline => frame.type === 'baseline',
-      replace: (frame) => { if (current()) reading.replace(frame.items) },
-      update: (frame) => { if (current()) reading.accept(frame.state) },
+      replace: (frame) => { if (current()) { reading.replace(frame.items); badge?.observe(frame.items, true) } },
+      update: (frame) => { if (current()) { reading.accept(frame.state); badge?.observe([frame.state], false) } },
       failed: (error) => {
         reading.disconnected()
         console.error('[session-status] Reminders could not be synchronized. Reload the page to reconnect:', error)

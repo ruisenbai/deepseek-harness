@@ -25,6 +25,8 @@ Show each Session's running state, highest-precedence pending interaction, and r
 <a id="use-this-package"></a>
 ## Use this package
 
+The Linux Desktop taskbar counts each completed turn independently of shared reading marks. Clicking the conversation transcript consumes one completion.
+
 The Web bundle's single `ui-session-status` row loads both faces: the Host reading service `ctx.sessionStatus` and, after [`dsh-client-ui-session`](../ui-session/README.md), the Client plugin, which the Web client requires at startup. A composition without this package has no status table and no `useSessionStatus` hook, and profiles without the Web bundle run no reading service. The package has no configuration fields or persistent storage. Restarting the Host or reloading this plugin discards every record: history reads as read again, and no earlier turn outcome survives.
 
 Use the Session row menu to **Mark as read** or **Mark as unread**. All clients connected to that Host share the result; a failed operation leaves the previous reminder visible and reports failure. A completed, failed, or cancelled turn creates an unread reminder. Existing history starts read when first observed. Opening a Session in a visible, focused main view acknowledges its loaded completion after a rendering frame. Switching the main view to a Session, including restoring it after a page reload, clears its existing manual reminder after the content arrives. Window focus and further activity in the open Session preserve manual unread. Unread reminders do not imply task success and remain independent of running and pending-interaction status.

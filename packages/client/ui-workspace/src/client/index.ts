@@ -199,6 +199,8 @@ export function apply(ctx: Context, config: SyncedConfig<WorkspaceNavigationConf
   const factoryFlowSource = flowSource('workspace.picker.directoryFlow')
   const openSession: WorkspaceBrowserInjected['open'] = (sessionId) => {
     uiWorkspace.openSession(sessionId)
+    const desktop = (globalThis as typeof globalThis & { dshDesktop?: { taskbarBadge?: { opened(id: string): void } } }).dshDesktop
+    desktop?.taskbarBadge?.opened(sessionId)
   }
   // Registry-global sets as Sets, rebuilt only when the Workspace snapshot changes.
   const pinnedSet = derive(workspaces.list, snapshot => new Set<SessionId>(snapshot.pinnedSessionIds))

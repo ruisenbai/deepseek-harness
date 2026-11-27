@@ -6,6 +6,7 @@ import type { DesktopShortcutInput, ShortcutConfigSnapshot, ShortcutSaveResult }
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { DESKTOP_IPC, SCHEME, type DshDesktopProductApi, type DesktopUpdatePresentation } from './ipc.ts'
 import { PLATFORM_IPC } from './platform-ipc.ts'
+import { createTaskbarBadge } from './linux-taskbar-badge.ts'
 import { markDocumentPlatform, syncWindowFullscreen } from './preload-platform.ts'
 import { syncNativeTheme } from './preload-theme.ts'
 import { syncSidebarFontSize } from './preload-sidebar-font.ts'
@@ -18,7 +19,10 @@ import type { FileDragHandle } from '@deepseek-ai/dsh-util-file-drag'
 function createProductApi(): DshDesktopProductApi {
   return {
     protocolVersion: 1,
-    ...(process.platform === 'linux' ? { windowControls: createLinuxWindowControls() } : {}),
+    ...(process.platform === 'linux' ? {
+      windowControls: createLinuxWindowControls(),
+      taskbarBadge: createTaskbarBadge(() => window.localStorage, count => ipcRenderer.send(DESKTOP_IPC.taskbarCount, count)),
+    } : {}),
     fileActions: {
       save: request => ipcRenderer.invoke(DESKTOP_IPC.fileSave, request) as Promise<FileSaveResult>,
       readClipboardImage: url => ipcRenderer.invoke(DESKTOP_IPC.clipboardImageRead, url) as

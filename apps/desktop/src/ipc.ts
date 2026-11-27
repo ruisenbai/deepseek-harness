@@ -9,8 +9,24 @@ import type { DesktopBrowserBridge } from '@deepseek-ai/dsh-client-ui-sidebar-br
 import type { DesktopFileDrag } from '@deepseek-ai/dsh-util-file-drag'
 import type { DesktopWindowControls } from '@deepseek-ai/dsh-client-ui-layout/src/window-controls.ts'
 
+/** Per-conversation completions awaiting an explicit visit to their conversation. */
+interface DesktopCompletion {
+  readonly sessionId: string
+  readonly completedTurn: number
+  readonly readTurn: number
+}
+
+/** Linux workspace bridge, available only in the trusted main document. */
+export interface LinuxTaskbarBadge {
+  /** Reconcile a Host baseline or one live completion/reading update. */
+  observe(records: readonly DesktopCompletion[], baseline: boolean): void
+  /** Consume one pending completion for the conversation the user opened. */
+  opened(sessionId: string): void
+}
+
 /** IPC channel names kept private to the desktop application bundle. */
 export const DESKTOP_IPC = {
+  taskbarCount: 'dsh-desktop:taskbar-count',
   fileSave: 'dsh-desktop:file-save',
   clipboardImageRead: 'dsh-desktop:clipboard-image-read',
   shortcutsInput: 'dsh-desktop:shortcuts-input',
@@ -96,6 +112,7 @@ export interface DesktopUpdatePresentation {
 
 /** Product documents cannot supply update versions, package URLs, or installation authorization. */
 export interface DshDesktopProductApi {
+  readonly taskbarBadge?: LinuxTaskbarBadge
   readonly windowControls?: DesktopWindowControls
   readonly fileActions: DesktopFileActions
   readonly protocolVersion: 1
