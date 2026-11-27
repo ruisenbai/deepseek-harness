@@ -1,15 +1,15 @@
 /**
  * Browser theme registry over the `--dsw-*` token stylesheets. The service
  * owns the live theme preference (light/dark/system), resolves `system` through
- * `prefers-color-scheme`, and publishes immutable snapshots; it never touches
- * the DOM — ui-layout's presenter consumes the resolved snapshot. The Host
+ * `prefers-color-scheme`, and publishes immutable snapshots for ui-layout. The Host
  * settings scope loads and stores the preference in the user-settings
  * document. The plugin also registers the Appearance and font settings rows
  * into the settings General section — the theme feature owns its own settings
- * surface. Desktop shortcuts adjust text, code, and terminal font sizes together.
+ * surface. Linux shortcuts scale the conversation. Other desktop shortcuts adjust text, code, and terminal font sizes together.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { NormalizedBinding } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 // Type-only: the ctx.configForms Context merge. Cross-plugin collaboration
@@ -554,10 +554,35 @@ function dynamicToken(name: string): ThemeTokenInspection {
   }
 }
 
+const CHAT_ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200]
+
+/** Restore the local chat scale when the Linux keyboard service attaches. */
+function installConversationZoom(scope: ClientContext): (delta: 1 | -1) => void {
+  const preference = createSnapshotStore(100, { persist: { name: 'dsh.conversation.zoomPercent' } })
+  const saved = preference.getSnapshot()
+  let percent = CHAT_ZOOM_STEPS.includes(saved) ? saved : 100
+  const property = '--dsh-conversation-zoom'
+  const style = document.documentElement.style
+  const applyScale = (): void => { style.setProperty(property, String(percent / 100)) }
+  scope.effect(() => {
+    applyScale()
+    return () => { style.removeProperty(property) }
+  })
+  return (delta) => {
+    const next = CHAT_ZOOM_STEPS[CHAT_ZOOM_STEPS.indexOf(percent) + delta]
+    if (next === undefined) return
+    percent = next
+    preference.set(percent)
+    applyScale()
+  }
+}
+
 /** Register desktop font-size keys when keyboard and locale services are available. */
 function installFontSizeShortcuts(ctx: ClientContext, adjust: (delta: 1 | -1) => void): void {
   ctx.inject(['shortcuts', 'locale'], (scope) => {
     if (scope.shortcuts.runtime !== 'desktop') return
+    const linux = scope.shortcuts.platform === 'linux'
+    const step = linux ? installConversationZoom(scope) : adjust
     const t = scope.locale.bind(SETTINGS_NS)
     const combinations: { binding: NormalizedBinding; delta: 1 | -1 }[] = []
     // Fixed bindings drive both reservation and matching.
@@ -569,7 +594,7 @@ function installFontSizeShortcuts(ctx: ClientContext, adjust: (delta: 1 | -1) =>
         combinations.push({ binding: scope.shortcuts.describeBinding(candidate).binding as NormalizedBinding, delta })
       }
       scope.effect(() => scope.shortcuts.registerFixed({
-        id: `fontSize.${direction}` as ShortcutCommandId, label: () => t(`fontSize.text.${direction}`),
+        id: `fontSize.${direction}` as ShortcutCommandId, label: () => linux ? t(`chatZoom.${direction}`) : t(`fontSize.text.${direction}`),
         keys: scope.shortcuts.describeBinding(binding).keys,
         bindings, group: 'application',
       }), `ui-theme: ${direction} font size reference`)
@@ -582,7 +607,7 @@ function installFontSizeShortcuts(ctx: ClientContext, adjust: (delta: 1 | -1) =>
         && (['control', 'alt', 'shift', 'meta'] as const).every(modifier => gesture[modifier] === binding.modifiers.includes(modifier)))
       if (matched === undefined) return
       input.consume()
-      adjust(matched.delta)
+      step(matched.delta)
     }), 'ui-theme: font size input')
   })
 }
@@ -597,8 +622,7 @@ export const inject = ['slots', 'locale', 'remote', 'configForms']
 /**
  * Client plugin body: provide the theme service and register the
  * feature-owned Appearance and font settings rows into the General section's item
- * slot (a feature owns its settings surface). Desktop font-size shortcuts share
- * all three font-size settings when the keyboard service is available.
+ * slot (a feature owns its settings surface). Linux chat zoom and other desktop font shortcuts use the keyboard service.
  * @param ctx - client cordis context.
  */
 export function apply(ctx: ClientContext): void {

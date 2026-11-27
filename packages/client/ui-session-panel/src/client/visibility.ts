@@ -146,7 +146,10 @@ export class SessionPanelState {
   private attach(sessionId: SessionId, probe: string, element: HTMLElement): () => void {
     this.report(sessionId, probe, false)
     const measure: ResizeObserverCallback = (entries) => {
-      for (const entry of entries) this.report(sessionId, probe, entry.contentRect.width >= 1)
+      for (const { contentRect } of entries) {
+        // Both axes undergo the same pixel rounding at fractional display or chat scales.
+        this.report(sessionId, probe, contentRect.height > 0 && contentRect.width >= contentRect.height)
+      }
     }
     const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure)
     observer?.observe(element)

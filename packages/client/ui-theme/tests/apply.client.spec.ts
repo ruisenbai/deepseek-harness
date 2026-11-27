@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /** ui-theme apply wiring: service provision, settings dictionaries riding the
  * locale service, declaration-aware Appearance row registration, snapshot
  * projection into the row store, and HMR collapse recovery. */
@@ -16,10 +17,6 @@ import { FontSettingsGroup } from '../src/client/FontSettingsGroup.tsx'
 import type { Shortcuts, ShortcutContext, ShortcutFixedInput, ShortcutGesture, ShortcutPlatform } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { bindingKey, normalizeBinding, presentBinding } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import { ShortcutRegistry } from '../../shortcuts/src/client/registry.ts'
-
-// These specs assert the shipped Chinese copy. The lane has no jsdom `window`,
-// so browser-language detection never runs and a fresh LocaleRuntime opens on
-// FALLBACK_LOCALE (en); bench stages zh explicitly on the locale instead.
 
 const SLOT = 'settings.general.item'
 
@@ -184,7 +181,7 @@ describe('ui-theme apply', () => {
     await vi.waitFor(() => { expect(theme.getTheme().fontSizes).toEqual({ text: 14, code: 11, terminal: 13 }) })
   })
 
-  it.each(['macos', 'windows', 'linux'] as const)('shares %s font shortcuts with the settings control and durable values', async (platform) => {
+  it.each(['macos', 'windows'] as const)('shares %s font shortcuts with the settings control and durable values', async (platform) => {
     const b = await bench()
     const keyboard = fontKeyboard(b.ctx, 'desktop', platform)
     declareItems(b.slots)
@@ -215,6 +212,31 @@ describe('ui-theme apply', () => {
     expect(keyboard.press()).not.toHaveBeenCalled()
     expect(theme.getTheme().fontSizes.text).toBe(21)
     await b.ctx.fiber.dispose()
+  })
+
+  it('restores Linux chat zoom across mounts and steps it without changing font preferences', async () => {
+    const prop = '--dsh-conversation-zoom'
+    const zoom = () => document.documentElement.style.getPropertyValue(prop)
+    localStorage.removeItem('dsh.conversation.zoomPercent')
+    const b = await bench()
+    const keyboard = fontKeyboard(b.ctx, 'desktop', 'linux')
+    const attach = () => b.ctx.plugin({ inject: [...inject], apply })
+    const first = attach()
+    await first.await()
+    expect(zoom()).toBe('1')
+    keyboard.press()
+    expect(zoom()).toBe('1.1')
+    keyboard.press({ shift: true })
+    expect(zoom()).toBe('1.25')
+    expect(b.mutate).not.toHaveBeenCalled()
+    await first.dispose()
+    expect(zoom()).toBe('')
+    await attach().await()
+    expect(zoom()).toBe('1.25')
+    keyboard.press({ code: 'Minus' })
+    expect(zoom()).toBe('1.1')
+    await b.ctx.fiber.dispose()
+    localStorage.removeItem('dsh.conversation.zoomPercent')
   })
 
   it('presents both desktop font actions with their accepted physical combinations', async () => {

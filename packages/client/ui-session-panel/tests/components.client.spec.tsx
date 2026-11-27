@@ -193,7 +193,7 @@ describe('SessionPanel', () => {
     const resize = (width: number): void => {
       act(() => {
         for (const { element, callback } of observed) {
-          callback([{ target: element, contentRect: { width } } as ResizeObserverEntry], {} as ResizeObserver)
+          callback([{ target: element, contentRect: { width, height: 1 } } as ResizeObserverEntry], {} as ResizeObserver)
         }
       })
     }

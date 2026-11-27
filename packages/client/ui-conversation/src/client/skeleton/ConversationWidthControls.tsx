@@ -99,7 +99,7 @@ function WidthHandle(props: {
     if (!dragging.current) return
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
     const box = event.currentTarget.getBoundingClientRect()
-    event.currentTarget.style.setProperty('--dsh-width-handle-pointer-y', `${event.clientY - box.top}px`)
+    event.currentTarget.style.setProperty('--dsh-width-handle-pointer-y', `${(event.clientY - box.top) / (event.currentTarget.currentCSSZoom || 1)}px`)
     latest.current = event.clientX
     frame.current ??= requestAnimationFrame(() => {
       frame.current = null
@@ -200,7 +200,7 @@ export function ConversationWidthControls({ container, phase }: ConversationWidt
       key={side}
       side={side}
       onStart={onStart}
-      scale={() => widthPerPixel(container)}
+      scale={() => widthPerPixel(container) / (container.currentCSSZoom || 1)}
       onDrag={onDrag}
       onCommit={onCommit}
       onEnd={onEnd}

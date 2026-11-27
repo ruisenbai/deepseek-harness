@@ -123,8 +123,8 @@
    The second term does not depend on whether the body is making room, so
    the room the transcript makes never changes the decision that asked for
    it; it is the step the body takes its end inset from, so the probe has
-   room exactly where the body makes it. It has no height and takes no
-   pointer events. */
+   room exactly where the body makes it. Its height provides a reference
+   for one CSS pixel at the current scale. */
 .dockProbe {
   position: absolute;
   top: 0;
@@ -134,7 +134,7 @@
     var(--dsh-session-panel-reserve-room)
   );
   max-width: 1px;
-  height: 0;
+  height: 1px;
   visibility: hidden;
   pointer-events: none;
 }

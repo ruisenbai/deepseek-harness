@@ -506,6 +506,10 @@
 /* Band below the header: the scrollport plus the width handles. Anchoring the
    handles here keeps their full-height strips and glow under the header's
    bottom edge at every header height. */
+:global([data-linux-titlebar]) .body:not(.embeddedBody) {
+  zoom: var(--dsh-conversation-zoom, 1);
+}
+
 .body {
   position: relative;
   display: flex;

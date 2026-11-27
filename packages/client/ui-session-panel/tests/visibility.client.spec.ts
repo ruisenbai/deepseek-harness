@@ -9,7 +9,7 @@ const B = 'session-b' as SessionId
 /** What the stubbed ResizeObserver holds for each observed probe element. */
 interface Observation {
   /** Deliver one size report for the element. */
-  readonly report: (width: number) => void
+  readonly report: (width: number, height?: number) => void
   /** Whether the observer was disconnected. */
   disconnected: boolean
 }
@@ -26,7 +26,9 @@ beforeEach(() => {
     constructor(callback: ResizeObserverCallback) { this.callback = callback }
     observe(element: Element): void {
       const observation: Observation = {
-        report: (width) => { this.callback([{ target: element, contentRect: { width } } as ResizeObserverEntry], {} as ResizeObserver) },
+        report: (width, height = 1) => {
+          this.callback([{ target: element, contentRect: { width, height } } as ResizeObserverEntry], {} as ResizeObserver)
+        },
         disconnected: false,
       }
       this.targets.push(observation)
@@ -82,6 +84,18 @@ describe('presentationOf', () => {
 })
 
 describe('SessionPanelState dock probes', () => {
+  it('compares the two measured axes at fractional scale and ignores a hidden probe', () => {
+    const state = new SessionPanelState()
+    const probe = probeOf(state, A)
+    probe.resize(0.984375, 0.984375)
+    expect(state.dockable.getSnapshot().get(A)).toBe(true)
+    probe.resize(0.96875, 0.984375)
+    expect(state.probes.getSnapshot().get(probe.id)).toBe(false)
+    probe.resize(0, 0)
+    expect(state.probes.getSnapshot().get(probe.id)).toBe(false)
+    probe.detach()
+  })
+
   it('enters an attached probe without room and gives it room from 1px of width', () => {
     const state = new SessionPanelState()
     expect(state.probes.getSnapshot().size).toBe(0)

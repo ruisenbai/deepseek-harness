@@ -268,6 +268,26 @@ describe('web e2e: macOS window drag coverage', () => {
       .waitFor({ state: 'attached' })
   }
 
+  it('zooms the Linux chat, its composer and session panel independently of the sidebar', async () => {
+    const { page, tripwire } = await desktopPage('linux')
+    try {
+      await connectTranscriptWorkspace(page, 'scalable-chat')
+      const panel = page.locator('[data-session-panel]')
+      const toggle = page.locator('[data-session-panel-toggle]').first()
+      if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click()
+      await panel.waitFor()
+      const scale = (selector: string) => page.locator(selector).first().evaluate(el => el.currentCSSZoom)
+      await page.keyboard.press('Control+Shift+Equal')
+      await expect.poll(() => scale('[data-composer-card]')).toBeCloseTo(1.1)
+      expect(await scale('[data-chat-flow]')).toBeCloseTo(1.1)
+      expect(await scale('[data-session-panel]')).toBeCloseTo(1.1)
+      expect(await scale('[data-sidebar-scrollport]')).toBe(1)
+      await page.keyboard.press('Control+Minus')
+      await expect.poll(() => scale('[data-composer-card]')).toBe(1)
+      expect(tripwire.pageErrors).toEqual([])
+    } finally { await page.close() }
+  })
+
   it('matches Linux window control hover backgrounds to sidebar buttons across themes and widths', async () => {
     const { page, tripwire } = await desktopPage('linux')
     try {

@@ -97,7 +97,7 @@ describe('SessionPanel.module.css docking geometry', () => {
 
   it('keeps the probe out of sight, out of the layout flow, and away from the pointer', () => {
     expect(declarationsOf('.dockProbe')).toMatchObject({
-      'position': 'absolute', 'height': '0', 'visibility': 'hidden', 'pointer-events': 'none',
+      'position': 'absolute', 'height': '1px', 'visibility': 'hidden', 'pointer-events': 'none',
     })
   })
 
